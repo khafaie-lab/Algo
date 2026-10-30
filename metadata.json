@@ -1,0 +1,6 @@
+{
+  "name": "Algo Strategy",
+  "description": "QuantPro institutional trading dashboard with live TradingView chart, Nobitex USDT/IRT order book depth, and Smart Money confluence advisor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
