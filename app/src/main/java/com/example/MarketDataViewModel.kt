@@ -1,10 +1,16 @@
 package com.example
 
 import com.example.network.*
+import com.example.ui.theme.AppThemePreset
+import com.example.ui.theme.ThemeState
+import com.example.ui.theme.paletteFor
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +25,40 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+data class CryptoCatalogItem(
+    val symbol: String,
+    val nameFa: String,
+    val nameEn: String,
+    val coingeckoId: String
+)
+
+val SUPPORTED_CRYPTO_CATALOG = listOf(
+    CryptoCatalogItem("BTC", "بیت‌کوین", "Bitcoin", "bitcoin"),
+    CryptoCatalogItem("ETH", "اتریوم", "Ethereum", "ethereum"),
+    CryptoCatalogItem("SOL", "سولانا", "Solana", "solana"),
+    CryptoCatalogItem("TON", "تون‌کوین", "Toncoin", "the-open-network"),
+    CryptoCatalogItem("DOGE", "دوج‌کوین", "Dogecoin", "dogecoin"),
+    CryptoCatalogItem("XRP", "ریپل", "Ripple", "ripple"),
+    CryptoCatalogItem("ADA", "کاردانو", "Cardano", "cardano"),
+    CryptoCatalogItem("BNB", "بایننس کوین", "BNB", "binancecoin"),
+    CryptoCatalogItem("AVAX", "آوالانچ", "Avalanche", "avalanche-2"),
+    CryptoCatalogItem("LINK", "چین‌لینک", "Chainlink", "chainlink"),
+    CryptoCatalogItem("TRX", "ترون", "TRON", "tron"),
+    CryptoCatalogItem("DOT", "پولکادات", "Polkadot", "polkadot"),
+    CryptoCatalogItem("LTC", "لایت‌کوین", "Litecoin", "litecoin"),
+    CryptoCatalogItem("SUI", "سویی", "Sui", "sui"),
+    CryptoCatalogItem("NEAR", "نیر پروتکل", "NEAR Protocol", "near"),
+    CryptoCatalogItem("ARB", "آربیتروم", "Arbitrum", "arbitrum"),
+    CryptoCatalogItem("OP", "اپتیمیزم", "Optimism", "optimism"),
+    CryptoCatalogItem("SHIB", "شیبا اینو", "Shiba Inu", "shiba-inu"),
+    CryptoCatalogItem("PEPE", "پپه", "Pepe", "pepe"),
+    CryptoCatalogItem("UNI", "یونی‌سواپ", "Uniswap", "uniswap"),
+    CryptoCatalogItem("AAVE", "آوه", "Aave", "aave"),
+    CryptoCatalogItem("ATOM", "کازماس", "Cosmos", "cosmos"),
+    CryptoCatalogItem("FET", "فچ ای‌آی", "Fetch.ai", "fetch-ai"),
+    CryptoCatalogItem("USDT/IRT", "تتر (تومان)", "Tether (IRT)", "tether")
+)
 
 data class Candle(
     val timestamp: Long,
@@ -152,6 +192,13 @@ sealed interface AiAnalysisState {
     data class Error(val message: String) : AiAnalysisState
 }
 
+sealed interface BacktestLabState {
+    object Idle : BacktestLabState
+    object Loading : BacktestLabState
+    data class Success(val report: com.example.quant.QuantScannerEngine.DetailedBacktestReport) : BacktestLabState
+    data class Error(val message: String) : BacktestLabState
+}
+
 data class PositionCalculationResult(
     val accountEquity: Double,
     val riskPercent: Float,
@@ -187,207 +234,34 @@ data class ScannerOpportunity(
     val isDualConfirmed: Boolean = true,
     val divergenceType: String = "واگرایی منفی RSI در سقف",
     val structureBreakType: String = "شکست ساختار (Bearish ChoCH)",
-    val breakevenPrice: String = ""
+    val breakevenPrice: String = "",
+    val dataSource: String = "OHLCV Live",
+    val candleCount: Int = 0,
+    val rsiValue: Double = 0.0,
+    val adxValue: Double = 0.0,
+    val atrPercent: Double = 0.0,
+    val volumeRatio: Double = 1.0,
+    val htfBias: String = "NEUTRAL",
+    val backtestWinRate: Double? = null,
+    val backtestTrades: Int = 0,
+    val backtestProfitFactor: Double? = null
 )
 
 fun generateInitialScannerOpportunities(): List<ScannerOpportunity> {
-    return listOf(
-        ScannerOpportunity(
-            id = "SCAN-01",
-            symbol = "BTC",
-            timeframe = "5m",
-            direction = "SHORT",
-            entryPrice = "$81,438.50",
-            stopLoss = "$82,450.00",
-            tp1 = "$80,200.00",
-            tp2 = "$79,150.00",
-            tp3 = "$77,800.00",
-            riskReward = "1:2.9",
-            confluenceScore = 94,
-            grade = "A+ GRADE",
-            isDualConfirmed = true,
-            divergenceType = "واگرایی منفی مخفی (Hidden Bearish Div) در RSI",
-            structureBreakType = "تغییر ماهیت نزولی (Bearish ChoCH) در تایم ۵ دقیقه",
-            breakevenPrice = "$81,438.50",
-            passedConditions = listOf(
-                "تاییدیه دوگانه: واگرایی منفی RSI + شکست ساختار نزولی ۵ دقیقه (ChoCH)",
-                "روند ماکرو: برخورد دقیق به بلاک سفارشات عرضه 4H در ۸۲,۴۵۰$",
-                "دفتر سفارشات نوبیتکس: برتری ۲.۲ برابری دیوارهای فروشندگان (Ask Imbalance)",
-                "تارگت‌گذاری پویا ATR با نسبت سود به زیان ۱:۲.۹ به سمت کف نقدینگی",
-                "قانون ریسک‌فری: انتقال خودکار حد ضرر به نقطه ورود پس از تاچ TP1"
-            ),
-            scannedAt = "هم‌اکنون (لحظه‌ای)"
-        ),
-        ScannerOpportunity(
-            id = "SCAN-02",
-            symbol = "SOL",
-            timeframe = "1m",
-            direction = "LONG",
-            entryPrice = "$103.75",
-            stopLoss = "$102.85",
-            tp1 = "$105.20",
-            tp2 = "$106.60",
-            tp3 = "$108.20",
-            riskReward = "1:3.2",
-            confluenceScore = 91,
-            grade = "A+ GRADE",
-            isDualConfirmed = true,
-            divergenceType = "واگرایی صعودی چندگانه RSI در اشباع فروش (<28)",
-            structureBreakType = "شکست سقف ماژور (Bullish BOS) در ۱ دقیقه",
-            breakevenPrice = "$103.75",
-            passedConditions = listOf(
-                "تاییدیه دوگانه: واگرایی مثبت کف + شکست ساختار رو به بالا (BOS)",
-                "اسکالپ ۱ دقیقه: برگشت پرشتاب از FVG تقاضای نوبیتکس",
-                "حجم خرید ۲.۴ برابر میانگین ۲۰ کندلی (Volume Spike)",
-                "عدم وجود دیوارهای عرضه سنگین در ۵ پله اول دفتر سفارشات"
-            ),
-            scannedAt = "۱ دقیقه پیش"
-        ),
-        ScannerOpportunity(
-            id = "SCAN-03",
-            symbol = "ETH",
-            timeframe = "15m",
-            direction = "SHORT",
-            entryPrice = "$2,398.80",
-            stopLoss = "$2,442.00",
-            tp1 = "$2,320.00",
-            tp2 = "$2,260.00",
-            tp3 = "$2,190.00",
-            riskReward = "1:2.8",
-            confluenceScore = 88,
-            grade = "A+ GRADE",
-            isDualConfirmed = true,
-            divergenceType = "واگرایی منفی آشکار (Regular Bearish) در MACD",
-            structureBreakType = "شکست خط گردن الگوی سقف دوقلو (ChoCH)",
-            breakevenPrice = "$2,398.80",
-            passedConditions = listOf(
-                "تاییدیه دوگانه: واگرایی منفی مومنتوم + شکست کف تاییدیه (ChoCH)",
-                "ریجکت پرقدرت از میانگین متحرک EMA 200 و زون عرضه ۱۵ دقیقه",
-                "پرایس‌اکشن: تشکیل الگوی کندلی Bearish Engulfing زیر مقاومت",
-                "خروج نقدینگی از جفت اتریوم و تبدیل حمایت ۲,۴۲۰ به مقاومت قطعی"
-            ),
-            scannedAt = "۲ دقیقه پیش"
-        ),
-        ScannerOpportunity(
-            id = "SCAN-04",
-            symbol = "TON",
-            timeframe = "3m",
-            direction = "LONG",
-            entryPrice = "$5.20",
-            stopLoss = "$5.12",
-            tp1 = "$5.34",
-            tp2 = "$5.46",
-            tp3 = "$5.60",
-            riskReward = "1:2.7",
-            confluenceScore = 84,
-            grade = "B+ GRADE",
-            isDualConfirmed = true,
-            divergenceType = "واگرایی پنهان صعودی در RSI",
-            structureBreakType = "شیفت ساختار ۳ دقیقه به انباشت (Accumulation ChoCH)",
-            breakevenPrice = "$5.20",
-            passedConditions = listOf(
-                "تاییدیه دوگانه: واگرایی کف RSI + شکست ساختار انباشت",
-                "خروج قدرتمند RSI از ناحیه اشباع فروش به بالای خط ۵۰",
-                "کراس طلایی مووینگ‌های ۲ و ۵ دوره‌ای",
-                "حمایت حجمی سنگین در دفتر سفارشات تومان"
-            ),
-            scannedAt = "۳ دقیقه پیش"
-        ),
-        ScannerOpportunity(
-            id = "SCAN-05",
-            symbol = "DOGE",
-            timeframe = "5m",
-            direction = "SHORT",
-            entryPrice = "$0.1820",
-            stopLoss = "$0.1865",
-            tp1 = "$0.1740",
-            tp2 = "$0.1680",
-            tp3 = "$0.1600",
-            riskReward = "1:2.6",
-            confluenceScore = 83,
-            grade = "B+ GRADE",
-            isDualConfirmed = true,
-            divergenceType = "واگرایی منفی حجم با قیمت در سقف کانال",
-            structureBreakType = "شکست کف ماژور ۵ دقیقه (Break & Retest)",
-            breakevenPrice = "$0.1820",
-            passedConditions = listOf(
-                "تاییدیه دوگانه: واگرایی منفی قیمت/حجم + شکست و پولبک تایید شده",
-                "ریزش زیر باند میانی بولینگر با افزایش مومنتوم نزولی",
-                "تشکیل دیوار فروش سنگین در دفتر سفارشات نوبیتکس",
-                "رعایت حد سود چندمرحله‌ای برای کاهش ریسک معامله"
-            ),
-            scannedAt = "۴ دقیقه پیش"
-        )
-    )
+    return emptyList()
 }
+
+data class AuthorProfile(
+    val name: String = "موسی خفائی",
+    val title: String = "طراح و توسعه‌دهنده سیستم‌های معاملاتی کوانتوم",
+    val contact: String = "",
+    val notes: String = "توسعه‌یافته برای تحلیل چندتایم‌فریمی، مدیریت ریسک هوشمند و اعتبارسنجی آماری استراتژی‌های ارز دیجیتال."
+)
 
 fun generateInitialCandles(asset: String = "BTC"): List<Candle> {
-    val basePrice = when (asset) {
-        "ETH" -> 2398.8f
-        "SOL" -> 103.75f
-        "TON" -> 5.2f
-        "DOGE" -> 0.18f
-        "USDT/IRT" -> 268755.0f
-        else -> 81438.5f
-    }
-    val count = 160
-    val list = mutableListOf<Candle>()
-    var current = basePrice * 0.965f
-    val now = System.currentTimeMillis()
-
-    for (i in 0 until count) {
-        val delta = ((Math.random() - 0.48) * (basePrice * 0.007)).toFloat()
-        val open = current
-        val close = current + delta
-        val high = maxOf(open, close) + (Math.random() * (basePrice * 0.0035)).toFloat()
-        val low = minOf(open, close) - (Math.random() * (basePrice * 0.0035)).toFloat()
-        val vol = (1000 + Math.random() * 4500).toFloat()
-        list.add(Candle(now - (count - i) * 14400000L, open, high, low, close, vol))
-        current = close
-    }
-    return list
+    return emptyList()
 }
 
-fun createInitialOrderBook(symbol: String = "BTC", mid: Double = 21819000000.0): NobitexOrderBook {
-    val step = when (symbol) {
-        "BTC" -> 5000000.0
-        "ETH" -> 150000.0
-        "SOL" -> 12000.0
-        "TON" -> 800.0
-        "DOGE" -> 25.0
-        else -> 90.0
-    }
-    val bestBid = mid - step * 0.8
-    val bestAsk = mid + step * 0.9
-    val bids = listOf(
-        OrderBookEntry(bestBid, 24500.0, 0.95f),
-        OrderBookEntry(bestBid - step, 18200.0, 0.72f),
-        OrderBookEntry(bestBid - step * 2, 31000.0, 1.0f),
-        OrderBookEntry(bestBid - step * 3, 12400.0, 0.50f),
-        OrderBookEntry(bestBid - step * 4, 15800.0, 0.62f)
-    )
-    val asks = listOf(
-        OrderBookEntry(bestAsk, 19800.0, 0.80f),
-        OrderBookEntry(bestAsk + step, 27500.0, 0.92f),
-        OrderBookEntry(bestAsk + step * 2, 14200.0, 0.58f),
-        OrderBookEntry(bestAsk + step * 3, 16900.0, 0.68f),
-        OrderBookEntry(bestAsk + step * 4, 29000.0, 0.96f)
-    )
-    return NobitexOrderBook(
-        symbol = symbol,
-        lastTradePrice = mid,
-        bestBid = bestBid,
-        bestAsk = bestAsk,
-        spread = bestAsk - bestBid,
-        dayChangePercent = 0.15,
-        dayHigh = mid * 1.015,
-        dayLow = mid * 0.985,
-        volume24h = 42.8,
-        bids = bids,
-        asks = asks,
-        lastUpdated = "لحظاتی پیش"
-    )
-}
 
 class MarketDataViewModel : ViewModel() {
     private val _selectedAsset = MutableStateFlow("BTC")
@@ -433,6 +307,10 @@ class MarketDataViewModel : ViewModel() {
 
     private val _showVolume = MutableStateFlow(true)
     val showVolume: StateFlow<Boolean> = _showVolume.asStateFlow()
+
+    // Dual Chart Engine Mode: "BINANCE_TV_CLOUD" (default) or "QUANT_LOCAL"
+    private val _chartEngineMode = MutableStateFlow("BINANCE_TV_CLOUD")
+    val chartEngineMode: StateFlow<String> = _chartEngineMode.asStateFlow()
 
     // Language State: "FA" (Persian) by default as requested
     private val _currentLanguage = MutableStateFlow("FA")
@@ -490,79 +368,44 @@ class MarketDataViewModel : ViewModel() {
     private val _params = MutableStateFlow(StrategyParams())
     val params: StateFlow<StrategyParams> = _params.asStateFlow()
 
-    // Trade History Log State
-    private val _trades = MutableStateFlow(
-        listOf(
-            TradeRecord(
-                id = "TR-1082",
-                symbol = "BTC/USD",
-                direction = "LONG",
-                entryPrice = "$64,200.00",
-                targetPrice = "$66,800.00",
-                stopLoss = "$63,100.00",
-                riskAmount = 100.0,
-                positionSize = "$5,555.50",
-                pnl = 260.00,
-                status = "WIN",
-                timestamp = "Yesterday, 18:42",
-                riskReward = "1:2.6"
-            ),
-            TradeRecord(
-                id = "TR-1081",
-                symbol = "ETH/USD",
-                direction = "LONG",
-                entryPrice = "$2,580.00",
-                targetPrice = "$2,720.00",
-                stopLoss = "$2,520.00",
-                riskAmount = 100.0,
-                positionSize = "$4,300.00",
-                pnl = 233.30,
-                status = "WIN",
-                timestamp = "2 days ago, 14:15",
-                riskReward = "1:2.33"
-            ),
-            TradeRecord(
-                id = "TR-1080",
-                symbol = "SOL/USD",
-                direction = "SHORT",
-                entryPrice = "$162.50",
-                targetPrice = "$150.00",
-                stopLoss = "$166.50",
-                riskAmount = 100.0,
-                positionSize = "$2,500.00",
-                pnl = -100.00,
-                status = "LOSS",
-                timestamp = "3 days ago, 09:20",
-                riskReward = "1:3.1"
-            )
-        )
-    )
+    // Trade History Log State - Empty by default
+    private val _trades = MutableStateFlow<List<TradeRecord>>(emptyList())
     val trades: StateFlow<List<TradeRecord>> = _trades.asStateFlow()
 
-    // Live Nobitex Order Book & Depth State - Initialized immediately
-    private val _nobitexOrderBook = MutableStateFlow<NobitexOrderBook?>(createInitialOrderBook("BTC", 21819000000.0))
+    // Live Nobitex Order Book & Depth State - Null until received from Nobitex API
+    private val _nobitexOrderBook = MutableStateFlow<NobitexOrderBook?>(null)
     val nobitexOrderBook: StateFlow<NobitexOrderBook?> = _nobitexOrderBook.asStateFlow()
 
     private val _isLoadingNobitex = MutableStateFlow(false)
     val isLoadingNobitex: StateFlow<Boolean> = _isLoadingNobitex.asStateFlow()
 
-    // Dedicated Multi-Currency Nobitex Rates State
-    private val _nobitexMarkets = MutableStateFlow<List<NobitexMarketItem>>(getDefaultNobitexMarkets())
+    // Live Theme Switcher State
+    private val _themePreset = MutableStateFlow(AppThemePreset.IBKR_OBSIDIAN)
+    val themePreset: StateFlow<AppThemePreset> = _themePreset.asStateFlow()
+
+    // Customizable Watchlist Symbols
+    private val _watchlistSymbols = MutableStateFlow(
+        listOf("BTC", "ETH", "SOL", "TON", "DOGE", "USDT/IRT")
+    )
+    val watchlistSymbols: StateFlow<List<String>> = _watchlistSymbols.asStateFlow()
+
+    // Dedicated Multi-Currency Nobitex Rates State - Empty until received from Nobitex
+    private val _nobitexMarkets = MutableStateFlow<List<NobitexMarketItem>>(emptyList())
     val nobitexMarkets: StateFlow<List<NobitexMarketItem>> = _nobitexMarkets.asStateFlow()
 
-    private val _serverPriority = MutableStateFlow("سرور نوبیتکس (اول اولویت)")
+    private val _serverPriority = MutableStateFlow("در حال اتصال به نوبیتکس...")
     val serverPriority: StateFlow<String> = _serverPriority.asStateFlow()
 
     val nobitexRepo = NobitexRepository()
 
     private val _nobitexConnectionState = MutableStateFlow(
         NobitexConnectionState(
-            status = NobitexStatusType.LIVE_CONNECTED,
+            status = NobitexStatusType.ERROR_CONNECTING,
             lastUpdatedTime = "در حال اتصال...",
             lastUpdatedDate = "",
-            isLive = true,
+            isLive = false,
             endpointUsed = "apiv2.nobitex.ir",
-            statusMessageFa = "🟢 نوبیتکس زنده"
+            statusMessageFa = "در حال اتصال..."
         )
     )
     val nobitexConnectionState: StateFlow<NobitexConnectionState> = _nobitexConnectionState.asStateFlow()
@@ -570,6 +413,9 @@ class MarketDataViewModel : ViewModel() {
     // Multi-Timeframe Smart Confluence Scanner
     private val _scannerOpportunities = MutableStateFlow<List<ScannerOpportunity>>(generateInitialScannerOpportunities())
     val scannerOpportunities: StateFlow<List<ScannerOpportunity>> = _scannerOpportunities.asStateFlow()
+
+    private val _scannerAuditStatus = MutableStateFlow("در حال آماده‌سازی اسکن چندتایم‌فریمی OHLCV...")
+    val scannerAuditStatus: StateFlow<String> = _scannerAuditStatus.asStateFlow()
 
     private val _activeChartOpportunity = MutableStateFlow<ScannerOpportunity?>(null)
     val activeChartOpportunity: StateFlow<ScannerOpportunity?> = _activeChartOpportunity.asStateFlow()
@@ -587,7 +433,53 @@ class MarketDataViewModel : ViewModel() {
     val scannerDirectionFilter: StateFlow<String> = _scannerDirectionFilter.asStateFlow()
 
     private val _selectedOppForRiskCalc = MutableStateFlow<ScannerOpportunity?>(null)
+
+    private val _backtestLabState = MutableStateFlow<BacktestLabState>(BacktestLabState.Idle)
+    val backtestLabState: StateFlow<BacktestLabState> = _backtestLabState.asStateFlow()
     val selectedOppForRiskCalc: StateFlow<ScannerOpportunity?> = _selectedOppForRiskCalc.asStateFlow()
+
+    private val _authorProfile = MutableStateFlow(AuthorProfile())
+    val authorProfile: StateFlow<AuthorProfile> = _authorProfile.asStateFlow()
+
+    fun loadAuthorProfile(context: Context) {
+        try {
+            val prefs = context.getSharedPreferences("quantpro_author_prefs", Context.MODE_PRIVATE)
+            val savedName = prefs.getString("author_name", null)
+            val savedTitle = prefs.getString("author_title", null)
+            val savedContact = prefs.getString("author_contact", null)
+            val savedNotes = prefs.getString("author_notes", null)
+            _authorProfile.value = AuthorProfile(
+                name = savedName?.takeIf { it.isNotBlank() } ?: "موسی خفائی",
+                title = savedTitle ?: _authorProfile.value.title,
+                contact = savedContact ?: "",
+                notes = savedNotes ?: _authorProfile.value.notes
+            )
+        } catch (e: Exception) {
+            Log.w("MarketData", "Failed loading author profile: ${e.message}")
+        }
+    }
+
+    fun updateAuthorProfile(profile: AuthorProfile) {
+        _authorProfile.value = profile.copy(
+            name = profile.name.trim().ifBlank { "موسی خفائی" }
+        )
+    }
+
+    fun saveAuthorProfile(context: Context, profile: AuthorProfile) {
+        val clean = profile.copy(name = profile.name.trim().ifBlank { "موسی خفائی" })
+        _authorProfile.value = clean
+        try {
+            context.getSharedPreferences("quantpro_author_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putString("author_name", clean.name)
+                .putString("author_title", clean.title)
+                .putString("author_contact", clean.contact)
+                .putString("author_notes", clean.notes)
+                .apply()
+        } catch (e: Exception) {
+            Log.w("MarketData", "Failed saving author profile: ${e.message}")
+        }
+    }
 
     fun openRiskCalculator(opp: ScannerOpportunity?) {
         _selectedOppForRiskCalc.value = opp
@@ -689,10 +581,15 @@ class MarketDataViewModel : ViewModel() {
         fetchRealTimeData()
         fetchNobitexData()
         fetchCandles(_selectedAsset.value, _chartTimeframe.value)
+        runSmartScanner()
     }
 
     fun setScannerTimeframe(tf: String) {
+        val changed = _selectedScannerTimeframe.value != tf
         _selectedScannerTimeframe.value = tf
+        if (changed && tf != "ALL" && _scannerOpportunities.value.none { it.timeframe.equals(tf, ignoreCase = true) }) {
+            runSmartScanner()
+        }
     }
 
     fun setScannerDirectionFilter(dir: String) {
@@ -716,141 +613,366 @@ class MarketDataViewModel : ViewModel() {
         }
     }
 
-    fun runSmartScanner() {
-        viewModelScope.launch(Dispatchers.Default) {
-            _isScanning.value = true
-            kotlinx.coroutines.delay(1000L)
-            val nowStr = "هم‌اکنون (لحظه‌ای)"
-            val list = listOf(
-                ScannerOpportunity(
-                    id = "SCAN-01",
-                    symbol = "BTC",
-                    timeframe = "5m",
-                    direction = "SHORT",
-                    entryPrice = "$81,438.50",
-                    stopLoss = "$82,450.00",
-                    tp1 = "$80,200.00",
-                    tp2 = "$79,150.00",
-                    tp3 = "$77,800.00",
-                    riskReward = "1:2.9",
-                    confluenceScore = 94,
-                    grade = "A+ GRADE",
-                    isDualConfirmed = true,
-                    divergenceType = "واگرایی منفی مخفی (Hidden Bearish Div) در RSI",
-                    structureBreakType = "تغییر ماهیت نزولی (Bearish ChoCH) در تایم ۵ دقیقه",
-                    breakevenPrice = "$81,438.50",
-                    passedConditions = listOf(
-                        "تاییدیه دوگانه: واگرایی منفی RSI + شکست ساختار نزولی ۵ دقیقه (ChoCH)",
-                        "روند ماکرو: برخورد دقیق به بلاک سفارشات عرضه 4H در ۸۲,۴۵۰$",
-                        "دفتر سفارشات نوبیتکس: برتری ۲.۲ برابری دیوارهای فروشندگان (Ask Imbalance)",
-                        "تارگت‌گذاری پویا ATR با نسبت سود به زیان ۱:۲.۹ به سمت کف نقدینگی",
-                        "قانون ریسک‌فری: انتقال خودکار حد ضرر به نقطه ورود پس از تاچ TP1"
-                    ),
-                    scannedAt = nowStr
-                ),
-                ScannerOpportunity(
-                    id = "SCAN-02",
-                    symbol = "SOL",
-                    timeframe = "1m",
-                    direction = "LONG",
-                    entryPrice = "$103.75",
-                    stopLoss = "$102.85",
-                    tp1 = "$105.20",
-                    tp2 = "$106.60",
-                    tp3 = "$108.20",
-                    riskReward = "1:3.2",
-                    confluenceScore = 91,
-                    grade = "A+ GRADE",
-                    isDualConfirmed = true,
-                    divergenceType = "واگرایی صعودی چندگانه RSI در اشباع فروش (<28)",
-                    structureBreakType = "شکست سقف ماژور (Bullish BOS) در ۱ دقیقه",
-                    breakevenPrice = "$103.75",
-                    passedConditions = listOf(
-                        "تاییدیه دوگانه: واگرایی مثبت کف + شکست ساختار رو به بالا (BOS)",
-                        "اسکالپ ۱ دقیقه: برگشت پرشتاب از FVG تقاضای نوبیتکس",
-                        "حجم خرید ۲.۴ برابر میانگین ۲۰ کندلی (Volume Spike)",
-                        "عدم وجود دیوارهای عرضه سنگین در ۵ پله اول دفتر سفارشات"
-                    ),
-                    scannedAt = nowStr
-                ),
-                ScannerOpportunity(
-                    id = "SCAN-03",
-                    symbol = "ETH",
-                    timeframe = "15m",
-                    direction = "SHORT",
-                    entryPrice = "$2,398.80",
-                    stopLoss = "$2,442.00",
-                    tp1 = "$2,320.00",
-                    tp2 = "$2,260.00",
-                    tp3 = "$2,190.00",
-                    riskReward = "1:2.8",
-                    confluenceScore = 88,
-                    grade = "A+ GRADE",
-                    isDualConfirmed = true,
-                    divergenceType = "واگرایی منفی آشکار (Regular Bearish) در MACD",
-                    structureBreakType = "شکست خط گردن الگوی سقف دوقلو (ChoCH)",
-                    breakevenPrice = "$2,398.80",
-                    passedConditions = listOf(
-                        "تاییدیه دوگانه: واگرایی منفی مومنتوم + شکست کف تاییدیه (ChoCH)",
-                        "ریجکت پرقدرت از میانگین متحرک EMA 200 و زون عرضه ۱۵ دقیقه",
-                        "پرایس‌اکشن: تشکیل الگوی کندلی Bearish Engulfing زیر مقاومت",
-                        "خروج نقدینگی از جفت اتریوم و تبدیل حمایت ۲,۴۲۰ به مقاومت قطعی"
-                    ),
-                    scannedAt = nowStr
-                ),
-                ScannerOpportunity(
-                    id = "SCAN-04",
-                    symbol = "TON",
-                    timeframe = "3m",
-                    direction = "LONG",
-                    entryPrice = "$5.20",
-                    stopLoss = "$5.12",
-                    tp1 = "$5.34",
-                    tp2 = "$5.46",
-                    tp3 = "$5.60",
-                    riskReward = "1:2.7",
-                    confluenceScore = 84,
-                    grade = "B+ GRADE",
-                    isDualConfirmed = true,
-                    divergenceType = "واگرایی پنهان صعودی در RSI",
-                    structureBreakType = "شیفت ساختار ۳ دقیقه به انباشت (Accumulation ChoCH)",
-                    breakevenPrice = "$5.20",
-                    passedConditions = listOf(
-                        "تاییدیه دوگانه: واگرایی کف RSI + شکست ساختار انباشت",
-                        "خروج قدرتمند RSI از ناحیه اشباع فروش به بالای خط ۵۰",
-                        "کراس طلایی مووینگ‌های ۲ و ۵ دوره‌ای",
-                        "حمایت حجمی سنگین در دفتر سفارشات تومان"
-                    ),
-                    scannedAt = nowStr
-                ),
-                ScannerOpportunity(
-                    id = "SCAN-05",
-                    symbol = "DOGE",
-                    timeframe = "5m",
-                    direction = "SHORT",
-                    entryPrice = "$0.1820",
-                    stopLoss = "$0.1865",
-                    tp1 = "$0.1740",
-                    tp2 = "$0.1680",
-                    tp3 = "$0.1600",
-                    riskReward = "1:2.6",
-                    confluenceScore = 83,
-                    grade = "B+ GRADE",
-                    isDualConfirmed = true,
-                    divergenceType = "واگرایی منفی حجم با قیمت در سقف کانال",
-                    structureBreakType = "شکست کف ماژور ۵ دقیقه (Break & Retest)",
-                    breakevenPrice = "$0.1820",
-                    passedConditions = listOf(
-                        "تاییدیه دوگانه: واگرایی منفی قیمت/حجم + شکست و پولبک تایید شده",
-                        "ریزش زیر باند میانی بولینگر با افزایش مومنتوم نزولی",
-                        "تشکیل دیوار فروش سنگین در دفتر سفارشات نوبیتکس",
-                        "رعایت حد سود چندمرحله‌ای برای کاهش ریسک معامله"
-                    ),
-                    scannedAt = nowStr
+    private suspend fun fetchOhlcvCandlesSync(
+        asset: String,
+        interval: String,
+        limit: Int = 260
+    ): Pair<List<Candle>, String> {
+        val stepSec = when (interval.lowercase()) {
+            "1m" -> 60L
+            "3m" -> 180L
+            "5m" -> 300L
+            "15m" -> 900L
+            "1h" -> 3600L
+            "4h" -> 14400L
+            "1d" -> 86400L
+            else -> 14400L
+        }
+        val toSec = System.currentTimeMillis() / 1000
+        val fromSec = toSec - (limit * stepSec)
+        val querySymbol = if (asset == "USDT/IRT") "USDTIRT" else "${asset}USDT"
+        val nobitexResolution = when (interval.lowercase()) {
+            "1m" -> "1"
+            "3m" -> "3"
+            "5m" -> "5"
+            "15m" -> "15"
+            "1h" -> "60"
+            "4h" -> "240"
+            "1d" -> "D"
+            else -> "240"
+        }
+
+        // For crypto pairs, prioritize high-liquidity global OHLCV endpoints (Bybit/OKX/KuCoin/Binance),
+        // and for USDT/IRT prioritize Nobitex UDF.
+        if (asset == "USDT/IRT") {
+            try {
+                val (udfResp, _) = nobitexRepo.getUdfHistory(
+                    symbol = querySymbol,
+                    resolution = nobitexResolution,
+                    toSec = toSec,
+                    fromSec = fromSec,
+                    countback = limit
                 )
-            )
-            _scannerOpportunities.value = list.sortedByDescending { it.confluenceScore }
-            _isScanning.value = false
+                if (udfResp != null && udfResp.status == "ok" && !udfResp.timestamps.isNullOrEmpty()) {
+                    val tList = udfResp.timestamps
+                    val oList = udfResp.opens ?: emptyList()
+                    val hList = udfResp.highs ?: emptyList()
+                    val lList = udfResp.lows ?: emptyList()
+                    val cList = udfResp.closes ?: emptyList()
+                    val vList = udfResp.volumes ?: emptyList()
+                    val parsed = mutableListOf<Candle>()
+                    for (i in tList.indices) {
+                        val ts = tList[i] * 1000L
+                        var o = oList.getOrNull(i)?.toFloat() ?: 0f
+                        var h = hList.getOrNull(i)?.toFloat() ?: o
+                        var l = lList.getOrNull(i)?.toFloat() ?: o
+                        var c = cList.getOrNull(i)?.toFloat() ?: o
+                        val v = vList.getOrNull(i)?.toFloat() ?: 100f
+                        if (o > 500000f) o /= 10f
+                        if (h > 500000f) h /= 10f
+                        if (l > 500000f) l /= 10f
+                        if (c > 500000f) c /= 10f
+                        if (o > 0f && h > 0f) parsed.add(Candle(ts, o, h, l, c, v))
+                    }
+                    val sorted = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                    if (sorted.size >= 40) return sorted to "Nobitex UDF"
+                }
+            } catch (_: Exception) {}
+            return emptyList<Candle>() to "Offline"
+        }
+
+        // 1. Bybit Spot V5
+        try {
+            val bybitInterval = when (interval.lowercase()) {
+                "1m" -> "1"
+                "3m" -> "3"
+                "5m" -> "5"
+                "15m" -> "15"
+                "1h" -> "60"
+                "4h" -> "240"
+                "1d" -> "D"
+                else -> "240"
+            }
+            val url = "https://api.bybit.com/v5/market/kline?category=spot&symbol=${asset}USDT&interval=$bybitInterval&limit=$limit"
+            val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val root = JSONObject(resp.body?.string() ?: "")
+                val arr = root.optJSONObject("result")?.optJSONArray("list")
+                if (arr != null && arr.length() >= 40) {
+                    val parsed = mutableListOf<Candle>()
+                    for (i in 0 until arr.length()) {
+                        val row = arr.getJSONArray(i)
+                        val ts = row.optString(0).toLongOrNull() ?: 0L
+                        val o = row.optString(1).toFloatOrNull() ?: 0f
+                        val h = row.optString(2).toFloatOrNull() ?: 0f
+                        val l = row.optString(3).toFloatOrNull() ?: 0f
+                        val c = row.optString(4).toFloatOrNull() ?: 0f
+                        val v = row.optString(5).toFloatOrNull() ?: 0f
+                        if (ts > 0L && o > 0f && h > 0f) parsed.add(Candle(ts, o, h, l, c, v))
+                    }
+                    val sorted = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                    if (sorted.size >= 40) return sorted to "Bybit Spot OHLCV"
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. OKX V5 (supports pagination via `after` for > 300 bars up to `limit`)
+        try {
+            val okxBar = when (interval.lowercase()) {
+                "1m" -> "1m"
+                "3m" -> "3m"
+                "5m" -> "5m"
+                "15m" -> "15m"
+                "1h" -> "1H"
+                "4h" -> "4H"
+                "1d" -> "1Dutc"
+                else -> "4H"
+            }
+            val allOkx = mutableListOf<Candle>()
+            var afterCursor: Long? = null
+            val pagesNeeded = ((limit + 299) / 300).coerceIn(1, 4)
+            for (page in 0 until pagesNeeded) {
+                val pageLimit = minOf(300, limit - allOkx.size).coerceAtLeast(100)
+                val afterParam = if (afterCursor != null) "&after=$afterCursor" else ""
+                val url = "https://www.okx.com/api/v5/market/candles?instId=${asset}-USDT&bar=$okxBar&limit=$pageLimit$afterParam"
+                val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+                val resp = client.newCall(req).execute()
+                if (!resp.isSuccessful) break
+                val root = JSONObject(resp.body?.string() ?: "")
+                val arr = root.optJSONArray("data") ?: break
+                if (arr.length() == 0) break
+                var oldestTs = Long.MAX_VALUE
+                for (i in 0 until arr.length()) {
+                    val row = arr.getJSONArray(i)
+                    val ts = row.optString(0).toLongOrNull() ?: 0L
+                    val o = row.optString(1).toFloatOrNull() ?: 0f
+                    val h = row.optString(2).toFloatOrNull() ?: 0f
+                    val l = row.optString(3).toFloatOrNull() ?: 0f
+                    val c = row.optString(4).toFloatOrNull() ?: 0f
+                    val v = row.optString(5).toFloatOrNull() ?: 0f
+                    if (ts > 0L && o > 0f && h > 0f) {
+                        allOkx.add(Candle(ts, o, h, l, c, v))
+                        if (ts < oldestTs) oldestTs = ts
+                    }
+                }
+                if (oldestTs == Long.MAX_VALUE || allOkx.size >= limit) break
+                afterCursor = oldestTs
+            }
+            val sorted = allOkx.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+            if (sorted.size >= 40) return sorted.takeLast(limit) to "OKX Spot OHLCV"
+        } catch (_: Exception) {}
+
+        // 3. KuCoin
+        try {
+            val kcType = when (interval.lowercase()) {
+                "1m" -> "1min"
+                "3m" -> "3min"
+                "5m" -> "5min"
+                "15m" -> "15min"
+                "1h" -> "1hour"
+                "4h" -> "4hour"
+                "1d" -> "1day"
+                else -> "1hour"
+            }
+            val url = "https://api.kucoin.com/api/v1/market/candles?symbol=${asset}-USDT&type=$kcType&startAt=$fromSec&endAt=$toSec"
+            val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val root = JSONObject(resp.body?.string() ?: "")
+                val arr = root.optJSONArray("data")
+                if (arr != null && arr.length() >= 40) {
+                    val parsed = mutableListOf<Candle>()
+                    for (i in 0 until arr.length()) {
+                        val item = arr.getJSONArray(i)
+                        val tSec = item.optLong(0)
+                        val o = item.optString(1).toFloatOrNull() ?: 0f
+                        val c = item.optString(2).toFloatOrNull() ?: 0f
+                        val h = item.optString(3).toFloatOrNull() ?: 0f
+                        val l = item.optString(4).toFloatOrNull() ?: 0f
+                        val v = item.optString(5).toFloatOrNull() ?: 0f
+                        if (tSec > 0L && o > 0f && h > 0f) parsed.add(Candle(tSec * 1000L, o, h, l, c, v))
+                    }
+                    val sorted = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                    if (sorted.size >= 40) return sorted to "KuCoin OHLCV"
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 4. Binance Spot
+        try {
+            val url = "https://api.binance.com/api/v3/klines?symbol=${asset}USDT&interval=$interval&limit=$limit"
+            val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val arr = JSONArray(resp.body?.string() ?: "[]")
+                if (arr.length() >= 40) {
+                    val parsed = mutableListOf<Candle>()
+                    for (i in 0 until arr.length()) {
+                        val k = arr.getJSONArray(i)
+                        val t = k.optLong(0)
+                        val o = k.optString(1).toFloatOrNull() ?: 0f
+                        val h = k.optString(2).toFloatOrNull() ?: 0f
+                        val l = k.optString(3).toFloatOrNull() ?: 0f
+                        val c = k.optString(4).toFloatOrNull() ?: 0f
+                        val v = k.optString(5).toFloatOrNull() ?: 0f
+                        if (t > 0L && o > 0f && h > 0f) parsed.add(Candle(t, o, h, l, c, v))
+                    }
+                    val sorted = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                    if (sorted.size >= 40) return sorted to "Binance OHLCV"
+                }
+            }
+        } catch (_: Exception) {}
+
+        return emptyList<Candle>() to "Unavailable"
+    }
+
+    fun runSmartScanner() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (_isScanning.value) return@launch
+            _isScanning.value = true
+            _scannerAuditStatus.value = "در حال دریافت کندل‌های واقعی چندتایم‌فریمی (OHLCV) و اجرای بک‌تست..."
+
+            val currentParams = _params.value
+            val symbolsToScan = _watchlistSymbols.value.take(8)
+            val selectedTf = _selectedScannerTimeframe.value
+            val targetTimeframes = if (selectedTf == "ALL") {
+                listOf("15m", "1h", "4h")
+            } else {
+                listOf(selectedTf, com.example.quant.QuantScannerEngine.htfFor(selectedTf)).distinct()
+            }
+
+            try {
+                // Pre-fetch all required (symbol, timeframe) candles once in parallel
+                val neededPairs = mutableSetOf<Pair<String, String>>()
+                for (sym in symbolsToScan) {
+                    for (tf in targetTimeframes) {
+                        neededPairs.add(sym to tf)
+                        neededPairs.add(sym to com.example.quant.QuantScannerEngine.htfFor(tf))
+                    }
+                }
+
+                val candleMap = mutableMapOf<Pair<String, String>, Pair<List<Candle>, String>>()
+                coroutineScope {
+                    val jobs = neededPairs.map { pair ->
+                        async {
+                            pair to fetchOhlcvCandlesSync(pair.first, pair.second, limit = 260)
+                        }
+                    }
+                    jobs.forEach { deferred ->
+                        val (pair, result) = deferred.await()
+                        candleMap[pair] = result
+                    }
+                }
+
+                val ltfTargets = if (selectedTf == "ALL") listOf("15m", "1h", "4h") else listOf(selectedTf)
+                val evaluatedList = mutableListOf<ScannerOpportunity>()
+                val timeNowLabel = SimpleDateFormat("HH:mm", Locale.US).format(Date())
+
+                for (sym in symbolsToScan) {
+                    for (tf in ltfTargets) {
+                        val (ltfCandles, ltfSource) = candleMap[sym to tf] ?: continue
+                        if (ltfCandles.size < 40) continue
+                        val htfTf = com.example.quant.QuantScannerEngine.htfFor(tf)
+                        val (htfCandles, _) = candleMap[sym to htfTf] ?: (emptyList<Candle>() to "")
+
+                        val opp = com.example.quant.QuantScannerEngine.analyzeAssetTimeframe(
+                            symbol = sym,
+                            timeframe = tf,
+                            ltfCandles = ltfCandles,
+                            htfCandles = htfCandles,
+                            dataSource = ltfSource,
+                            params = currentParams,
+                            scannedAtLabel = timeNowLabel
+                        )
+                        if (opp != null) {
+                            evaluatedList.add(opp)
+                        }
+                    }
+                }
+
+                val ranked = evaluatedList.sortedByDescending {
+                    it.confluenceScore + ((it.backtestWinRate ?: 50.0) * 0.25)
+                }
+
+                _scannerOpportunities.value = ranked
+                _scannerAuditStatus.value = if (ranked.isNotEmpty()) {
+                    val avgWin = ranked.mapNotNull { it.backtestWinRate }.takeIf { it.isNotEmpty() }?.average()
+                    val winText = if (avgWin != null) " • میانگین Win Rate تاریخی: ${String.format(Locale.US, "%.1f%%", avgWin)}" else ""
+                    "تحلیل واقعی ${ranked.size} موقعیت از ${symbolsToScan.size} ارز (Bybit/OKX/Nobitex OHLCV)$winText"
+                } else {
+                    "خطا در دریافت کندل‌های زنده OHLCV از صرافی‌ها (اتصال اینترنت را بررسی کنید؛ هیچ سیگنال جعلی ساخته نشد)."
+                }
+            } catch (e: Exception) {
+                Log.w("QuantScanner", "MTF scanner error: ${e.message}")
+                _scannerAuditStatus.value = "خطا در اجرای اسکنر چندتایم‌فریمی: ${e.message}"
+            } finally {
+                _isScanning.value = false
+            }
+        }
+    }
+
+    fun clearBacktestLabState() {
+        _backtestLabState.value = BacktestLabState.Idle
+    }
+
+    fun runInteractiveBacktest(
+        symbol: String,
+        timeframe: String,
+        candleLimit: Int = 500,
+        minScoreThreshold: Int = 58,
+        atrMultiplier: Float = _params.value.atrMultiplier,
+        targetRr: Double = 2.0,
+        directionFilter: String = "ALL"
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backtestLabState.value = BacktestLabState.Loading
+            try {
+                val htfTf = com.example.quant.QuantScannerEngine.htfFor(timeframe)
+                val safeLimit = candleLimit.coerceIn(150, 1000)
+
+                var ltfResult: Pair<List<Candle>, String> = emptyList<Candle>() to ""
+                var htfResult: Pair<List<Candle>, String> = emptyList<Candle>() to ""
+                coroutineScope {
+                    val ltfJob = async { fetchOhlcvCandlesSync(symbol, timeframe, limit = safeLimit) }
+                    val htfJob = async { fetchOhlcvCandlesSync(symbol, htfTf, limit = minOf(500, safeLimit)) }
+                    ltfResult = ltfJob.await()
+                    htfResult = htfJob.await()
+                }
+
+                val (ltfCandles, source) = ltfResult
+                val (htfCandles, _) = htfResult
+                if (ltfCandles.size < 80) {
+                    _backtestLabState.value = BacktestLabState.Error(
+                        "داده کندلی کافی برای $symbol ($timeframe) دریافت نشد (تعداد دریافتی: ${ltfCandles.size}). اتصال شبکه را بررسی کنید."
+                    )
+                    return@launch
+                }
+
+                val p = _params.value
+                val report = com.example.quant.QuantScannerEngine.runDetailedBacktest(
+                    symbol = symbol,
+                    timeframe = timeframe,
+                    ltfCandles = ltfCandles,
+                    htfCandles = htfCandles,
+                    dataSource = source,
+                    baseParams = p,
+                    minScoreThreshold = minScoreThreshold,
+                    atrMultiplier = atrMultiplier,
+                    targetRr = targetRr,
+                    directionFilter = directionFilter,
+                    initialEquity = p.accountBalance,
+                    riskPerTradePercent = p.riskPerTradePercent
+                )
+
+                if (report == null) {
+                    _backtestLabState.value = BacktestLabState.Error("امکان اجرای بک‌تست روی تعداد کندل‌های فعلی وجود ندارد.")
+                } else {
+                    _backtestLabState.value = BacktestLabState.Success(report)
+                }
+            } catch (e: Exception) {
+                _backtestLabState.value = BacktestLabState.Error("خطا در اجرای بک‌تست: ${e.message ?: "نامشخص"}")
+            }
         }
     }
 
@@ -881,8 +1003,150 @@ class MarketDataViewModel : ViewModel() {
         _currentLanguage.value = if (_currentLanguage.value == "FA") "EN" else "FA"
     }
 
+    fun setThemePreset(preset: AppThemePreset) {
+        _themePreset.value = preset
+        ThemeState.current = paletteFor(preset)
+    }
+
+    fun cycleThemePreset() {
+        val presets = AppThemePreset.entries
+        val nextIndex = (presets.indexOf(_themePreset.value) + 1) % presets.size
+        setThemePreset(presets[nextIndex])
+    }
+
+    fun addWatchlistSymbol(rawSymbol: String): Boolean {
+        val cleaned = rawSymbol
+            .replace("USDT", "", ignoreCase = true)
+            .replace("/IRT", "", ignoreCase = true)
+            .replace("/", "")
+            .trim()
+            .uppercase()
+        val normalized = if (rawSymbol.contains("IRT", ignoreCase = true) || cleaned == "USDT") "USDT/IRT" else cleaned
+        if (normalized.isEmpty()) return false
+
+        val currentList = _watchlistSymbols.value
+        if (!currentList.contains(normalized)) {
+            _watchlistSymbols.value = currentList + normalized
+            fetchSingleGlobalMarketIntoWatchlist(normalized)
+            fetchRealTimeData()
+            return true
+        }
+        return false
+    }
+
+    fun removeWatchlistSymbol(symbol: String) {
+        val currentList = _watchlistSymbols.value
+        if (currentList.size <= 2) return
+        _watchlistSymbols.value = currentList.filter { it != symbol }
+        _nobitexMarkets.value = _nobitexMarkets.value.filter { it.symbol != symbol }
+        if (_selectedAsset.value == symbol) {
+            val fallback = _watchlistSymbols.value.firstOrNull() ?: "BTC"
+            selectAsset(fallback)
+        }
+    }
+
+    private fun catalogMetadata(sym: String): Pair<String, String> {
+        val entry = SUPPORTED_CRYPTO_CATALOG.find { it.symbol.equals(sym, ignoreCase = true) }
+        return if (entry != null) entry.nameFa to entry.nameEn else sym to sym
+    }
+
+    private fun fetchSingleGlobalMarketIntoWatchlist(symbol: String) {
+        if (symbol == "USDT/IRT") return
+        viewModelScope.launch(Dispatchers.IO) {
+            val usdtToman = _nobitexMarkets.value.find { it.symbol == "USDT/IRT" }?.priceToman
+                ?: _nobitexOrderBook.value?.lastTradePrice
+                ?: 268755.0
+            val (faName, enName) = catalogMetadata(symbol)
+            val ticker = fetchGlobalSpotTicker(symbol)
+            if (ticker != null) {
+                val (lastUsdt, change24h, vol) = ticker
+                val toman = lastUsdt * usdtToman
+                val item = NobitexMarketItem(
+                    symbol = symbol,
+                    nameFa = faName,
+                    nameEn = enName,
+                    priceUsdt = lastUsdt,
+                    priceToman = toman,
+                    dayChange = change24h,
+                    dayHighToman = toman * 1.018,
+                    dayLowToman = toman * 0.982,
+                    volume24h = vol
+                )
+                val existing = _nobitexMarkets.value.filter { it.symbol != symbol }
+                _nobitexMarkets.value = existing + item
+                runSmartScanner()
+            }
+        }
+    }
+
+    private fun fetchGlobalSpotTicker(symbol: String): Triple<Double, Double, Double>? {
+        val clean = symbol.replace("/", "").replace("-", "").uppercase()
+        // 1. Bybit V5 Ticker (accessible globally)
+        try {
+            val req = Request.Builder()
+                .url("https://api.bybit.com/v5/market/tickers?category=spot&symbol=${clean}USDT")
+                .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val body = resp.body?.string() ?: ""
+                val list = JSONObject(body).optJSONObject("result")?.optJSONArray("list")
+                if (list != null && list.length() > 0) {
+                    val obj = list.getJSONObject(0)
+                    val p = obj.optString("lastPrice").toDoubleOrNull() ?: 0.0
+                    val ch = (obj.optString("price24hPcnt").toDoubleOrNull() ?: 0.0) * 100.0
+                    val vol = obj.optString("volume24h").toDoubleOrNull() ?: 1000.0
+                    if (p > 0.0) return Triple(p, ch, vol)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. OKX V5 Ticker
+        try {
+            val req = Request.Builder()
+                .url("https://www.okx.com/api/v5/market/ticker?instId=${clean}-USDT")
+                .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val body = resp.body?.string() ?: ""
+                val data = JSONObject(body).optJSONArray("data")
+                if (data != null && data.length() > 0) {
+                    val obj = data.getJSONObject(0)
+                    val last = obj.optString("last").toDoubleOrNull() ?: 0.0
+                    val open24h = obj.optString("open24h").toDoubleOrNull() ?: last
+                    val ch = if (open24h > 0.0) ((last - open24h) / open24h) * 100.0 else 0.0
+                    val vol = obj.optString("vol24h").toDoubleOrNull() ?: 1000.0
+                    if (last > 0.0) return Triple(last, ch, vol)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 3. Binance Ticker
+        try {
+            val req = Request.Builder()
+                .url("https://api.binance.com/api/v3/ticker/24hr?symbol=${clean}USDT")
+                .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val obj = JSONObject(resp.body?.string() ?: "{}")
+                val p = obj.optString("lastPrice").toDoubleOrNull() ?: 0.0
+                val ch = obj.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
+                val vol = obj.optString("volume").toDoubleOrNull() ?: 1000.0
+                if (p > 0.0) return Triple(p, ch, vol)
+            }
+        } catch (_: Exception) {}
+
+        return null
+    }
+
     fun setChartType(type: String) {
         _chartType.value = type
+    }
+
+    fun setChartEngineMode(mode: String) {
+        _chartEngineMode.value = mode
     }
 
     fun setChartTimeframe(tf: String) {
@@ -910,44 +1174,96 @@ class MarketDataViewModel : ViewModel() {
     }
 
     private fun updateAdvisorSetupFromChecklist() {
-        val totalScore = _checklist.value.filter { it.isPassed }.sumOf { it.weight }
+        val currentCandles = _candles.value
+        val currentParams = _params.value
         val priceStr = _price.value
         val isToman = _selectedAsset.value == "USDT/IRT" || priceStr.contains("تومان")
-        val cleanPrice = priceStr.replace("$", "").replace("تومان", "").replace(",", "").trim().toDoubleOrNull()
+        val fallbackClean = priceStr.replace("$", "").replace("تومان", "").replace(",", "").trim().toDoubleOrNull()
             ?: if (isToman) 268755.0 else 81438.5
-
-        val stopLossDouble = cleanPrice * 0.985
-        val tp1Double = cleanPrice * 1.022 // 1:1.5 RR -> 50% TP + Move to BE
-        val tp2Double = cleanPrice * 1.038 // 1:2.5 RR -> 30% TP
-        val tp3Double = cleanPrice * 1.060 // 1:4.0 RR -> 20% Runner
-        val invalidationDouble = cleanPrice * 0.982
-
-        val (grade, recommendation) = when {
-            totalScore >= 80 -> "A+ GRADE" to "🟢 تایید کامل ورود با احتمال موفقیت بالا (High Probability)"
-            totalScore >= 60 -> "B GRADE" to "🟡 تایید مشروط؛ صبر برای تایید شکست یا کاهش ۵۰٪ ریسک"
-            else -> "FILTERED" to "🔴 معامله فیلتر شد؛ بازار پرریسک یا فاقد جهت مشخص (پرهیز از ورود)"
-        }
 
         fun formatPrice(value: Double): String {
             return if (isToman) {
                 String.format(Locale.US, "%,.0f تومان", value)
             } else {
-                String.format(Locale.US, "$%,.2f", value)
+                when {
+                    value < 0.01 -> String.format(Locale.US, "$%.6f", value)
+                    value < 1.0 -> String.format(Locale.US, "$%.4f", value)
+                    else -> String.format(Locale.US, "$%,.2f", value)
+                }
             }
         }
 
+        if (currentCandles.size >= 40) {
+            val sorted = currentCandles.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+            val closes = sorted.map { it.close.toDouble() }
+            val ema20 = com.example.quant.QuantScannerEngine.emaSeries(closes, 20)
+            val ema50 = com.example.quant.QuantScannerEngine.emaSeries(closes, minOf(50, closes.size))
+            val ema200 = com.example.quant.QuantScannerEngine.emaSeries(closes, minOf(200, closes.size))
+            val rsi = com.example.quant.QuantScannerEngine.wilderRsiSeries(closes, 14)
+            val atr = com.example.quant.QuantScannerEngine.wilderAtrSeries(sorted, 14)
+            val adx = com.example.quant.QuantScannerEngine.wilderAdxSeries(sorted, 14)
+            val volRatio = com.example.quant.QuantScannerEngine.volumeRatioSeries(sorted, 20)
+            val swings = com.example.quant.QuantScannerEngine.findConfirmedSwings(sorted, 3, 3)
+            val htfCtx = com.example.quant.QuantScannerEngine.evaluateHtfContext(sorted, _chartTimeframe.value)
+
+            val eval = com.example.quant.QuantScannerEngine.evaluateBarConfluence(
+                candles = sorted,
+                index = sorted.lastIndex,
+                htfContext = htfCtx,
+                ema20 = ema20,
+                ema50 = ema50,
+                ema200 = ema200,
+                rsi = rsi,
+                atr = atr,
+                adx = adx,
+                volRatio = volRatio,
+                allSwings = swings,
+                params = currentParams
+            )
+
+            val grade = when {
+                eval.score >= 76 -> "A+ GRADE"
+                eval.score >= 56 -> "B GRADE"
+                else -> "FILTERED"
+            }
+            val recommendation = when {
+                eval.score >= 76 -> "تایید کوانتوم چندعامل (${eval.direction}) با ATR=${String.format(Locale.US, "%.2f%%", eval.atrPct)} و RSI=${String.format(Locale.US, "%.1f", eval.rsi)}"
+                eval.score >= 56 -> "تایید مشروط (${eval.direction})؛ ورود پله‌ای یا کاهش حجم ریسک توصیه می‌شود"
+                else -> "فیلتر شد؛ همگرایی کندلی کافی برای ورود کم‌ریسک وجود ندارد"
+            }
+            val entry = sorted.last().close.toDouble()
+            val invalidation = if (eval.direction == "LONG") eval.stopLossPrice * 0.997 else eval.stopLossPrice * 1.003
+
+            _advisorSetup.value = AdvisorSetup(
+                type = eval.direction,
+                entryPrice = formatPrice(entry),
+                stopLoss = formatPrice(eval.stopLossPrice),
+                tp1 = formatPrice(eval.tp1Price),
+                tp2 = formatPrice(eval.tp2Price),
+                tp3 = formatPrice(eval.tp3Price),
+                invalidationPrice = formatPrice(invalidation),
+                riskReward = "1:${String.format(Locale.US, "%.1f", eval.riskRewardRatio)}",
+                confluenceScore = eval.score,
+                grade = grade,
+                recommendation = recommendation
+            )
+            return
+        }
+
+        // Honest pre-candle state until OHLCV finishes loading
+        val totalScore = _checklist.value.filter { it.isPassed }.sumOf { it.weight }
         _advisorSetup.value = AdvisorSetup(
             type = "LONG",
-            entryPrice = formatPrice(cleanPrice),
-            stopLoss = formatPrice(stopLossDouble),
-            tp1 = formatPrice(tp1Double),
-            tp2 = formatPrice(tp2Double),
-            tp3 = formatPrice(tp3Double),
-            invalidationPrice = formatPrice(invalidationDouble),
-            riskReward = "1:2.6",
+            entryPrice = formatPrice(fallbackClean),
+            stopLoss = if (isToman) "در حال محاسبه ATR..." else "Calculating ATR...",
+            tp1 = "--",
+            tp2 = "--",
+            tp3 = "--",
+            invalidationPrice = "--",
+            riskReward = "--",
             confluenceScore = totalScore,
-            grade = grade,
-            recommendation = recommendation
+            grade = "LOADING",
+            recommendation = "در حال دریافت کندل‌های OHLCV برای محاسبه دقیق ATR و ساختار..."
         )
     }
 
@@ -961,10 +1277,12 @@ class MarketDataViewModel : ViewModel() {
 
     fun setAtrMultiplier(multiplier: Float) {
         _params.value = _params.value.copy(atrMultiplier = multiplier)
+        updateAdvisorSetupFromChecklist()
     }
 
     fun setPreferredTimeframe(tf: String) {
         _params.value = _params.value.copy(preferredTimeframe = tf)
+        updateAdvisorSetupFromChecklist()
     }
 
     fun toggleRule(ruleId: String) {
@@ -993,18 +1311,30 @@ class MarketDataViewModel : ViewModel() {
     ): TradeRecord {
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val isToman = symbol.contains("IRT") || entryPrice.contains("تومان")
-        val cleanPrice = entryPrice.replace("$", "").replace("تومان", "").replace(",", "").trim().toDoubleOrNull()
-            ?: if (isToman) 268755.0 else 81438.5
+        val cleanPrice = entryPrice.replace("$", "").replace("تومان", "").replace("ت", "").replace(",", "").trim().toDoubleOrNull()
+            ?: 0.0
         val riskAmount = balance * (riskPercent / 100.0)
+        val parsedCustomSl = customSl?.replace("$", "")?.replace("تومان", "")?.replace("ت", "")?.replace(",", "")?.trim()?.toDoubleOrNull()
 
-        val stopPrice = if (direction == "LONG") cleanPrice * 0.982 else cleanPrice * 1.018
-        val targetPrice = if (direction == "LONG") cleanPrice * 1.045 else cleanPrice * 0.955
-        val positionSizeDouble = riskAmount / 0.018
+        val stopPrice = parsedCustomSl ?: run {
+            val atrVal = if (_candles.value.size >= 16) {
+                com.example.quant.QuantScannerEngine.wilderAtrSeries(_candles.value, 14).lastOrNull()
+                    ?: (cleanPrice * 0.015)
+            } else {
+                cleanPrice * 0.015
+            }
+            val dist = atrVal * _params.value.atrMultiplier
+            if (direction.equals("SHORT", ignoreCase = true)) cleanPrice + dist else (cleanPrice - dist).coerceAtLeast(cleanPrice * 0.01)
+        }
+        val riskPerUnit = kotlin.math.abs(cleanPrice - stopPrice)
+        val targetPrice = if (direction.equals("SHORT", ignoreCase = true)) cleanPrice - riskPerUnit * 2.0 else cleanPrice + riskPerUnit * 2.0
+        val stopDistPct = if (cleanPrice > 0.0 && riskPerUnit > 0.0) (riskPerUnit / cleanPrice).coerceAtLeast(0.002) else 0.015
+        val positionSizeDouble = if (cleanPrice > 0) riskAmount / stopDistPct else 0.0
 
         fun fmt(v: Double): String = if (isToman) String.format(Locale.US, "%,.0f تومان", v) else String.format(Locale.US, "$%,.2f", v)
 
         val newRecord = TradeRecord(
-            id = "TR-${(1083..1999).random()}",
+            id = "SIM-${(System.currentTimeMillis() % 100000)}",
             symbol = if (symbol.contains("/")) symbol else "$symbol/USD",
             direction = direction,
             entryPrice = entryPrice,
@@ -1013,9 +1343,9 @@ class MarketDataViewModel : ViewModel() {
             riskAmount = riskAmount,
             positionSize = if (isToman) fmt(positionSizeDouble) else String.format(Locale.US, "%.2f Lot (%s)", lotSize, platform),
             pnl = 0.0,
-            status = "OPEN",
+            status = "OPEN (شبیه‌سازی)",
             timestamp = "Today, ${timeFormat.format(Date())}",
-            riskReward = customRiskReward ?: "1:2.8"
+            riskReward = customRiskReward ?: "1:2.0"
         )
 
         _trades.value = listOf(newRecord) + _trades.value
@@ -1039,8 +1369,8 @@ class MarketDataViewModel : ViewModel() {
     }
 
     /**
-     * Fetches real live OHLC Candlesticks prioritizing Nobitex UDF history via Retrofit.
-     * Documented at https://apidocs.nobitex.ir/
+     * Fetches real live OHLC Candlesticks (up to 500 historical bars, strictly sorted ascending).
+     * Prioritizes Nobitex UDF for USDT/IRT and falls back across OKX, Bybit, KuCoin, and Binance for crypto pairs.
      */
     fun fetchCandles(asset: String, interval: String = "4h") {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1066,10 +1396,12 @@ class MarketDataViewModel : ViewModel() {
                 "1d" -> 86400L
                 else -> 14400L
             }
+            val targetBars = 500L
             val toSec = System.currentTimeMillis() / 1000
-            val fromSec = toSec - (160 * stepSec)
+            val fromSec = toSec - (targetBars * stepSec)
 
             val querySymbol = if (asset == "USDT/IRT") "USDTIRT" else "${asset}USDT"
+            var partialNobitexCandles: List<Candle> = emptyList()
 
             // 1. PRIMARY PRIORITY: NOBITEX UDF HISTORY VIA RETROFIT
             val (udfResp, connState) = nobitexRepo.getUdfHistory(
@@ -1077,7 +1409,7 @@ class MarketDataViewModel : ViewModel() {
                 resolution = nobitexResolution,
                 toSec = toSec,
                 fromSec = fromSec,
-                countback = 160
+                countback = 500
             )
             _nobitexConnectionState.value = connState
 
@@ -1110,15 +1442,159 @@ class MarketDataViewModel : ViewModel() {
                         parsed.add(Candle(ts, o, h, l, c, v))
                     }
                 }
-                if (parsed.isNotEmpty()) {
-                    _candles.value = parsed
-                    _isLoadingCandles.value = false
-                    return@launch
+                val sortedParsed = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                if (sortedParsed.isNotEmpty()) {
+                    if (asset == "USDT/IRT" || sortedParsed.size >= 80) {
+                        _candles.value = sortedParsed
+                        _isLoadingCandles.value = false
+                        updateAdvisorSetupFromChecklist()
+                        return@launch
+                    } else {
+                        partialNobitexCandles = sortedParsed
+                    }
                 }
             }
 
-            // 2. SECONDARY FALLBACK FOR CRYPTO: BINANCE API (in case user has proxy or global access)
             if (asset != "USDT/IRT") {
+                // 2. GLOBAL SOURCE A: BYBIT SPOT KLINES (Up to 500 bars, globally accessible)
+                try {
+                    val bybitInterval = when (interval.lowercase()) {
+                        "1m" -> "1"
+                        "3m" -> "3"
+                        "5m" -> "5"
+                        "15m" -> "15"
+                        "1h" -> "60"
+                        "4h" -> "240"
+                        "1d" -> "D"
+                        else -> "240"
+                    }
+                    val url = "https://api.bybit.com/v5/market/kline?category=spot&symbol=${asset}USDT&interval=$bybitInterval&limit=500"
+                    val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val root = JSONObject(body)
+                        val listArr = root.optJSONObject("result")?.optJSONArray("list")
+                        if (listArr != null && listArr.length() > 0) {
+                            val parsed = mutableListOf<Candle>()
+                            for (i in 0 until listArr.length()) {
+                                val row = listArr.getJSONArray(i)
+                                val ts = row.optString(0).toLongOrNull() ?: 0L
+                                val o = row.optString(1).toFloatOrNull() ?: 0f
+                                val h = row.optString(2).toFloatOrNull() ?: 0f
+                                val l = row.optString(3).toFloatOrNull() ?: 0f
+                                val c = row.optString(4).toFloatOrNull() ?: 0f
+                                val v = row.optString(5).toFloatOrNull() ?: 0f
+                                if (ts > 0L && o > 0f && h > 0f) {
+                                    parsed.add(Candle(ts, o, h, l, c, v))
+                                }
+                            }
+                            val sorted = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                            if (sorted.isNotEmpty()) {
+                                _candles.value = sorted
+                                _isLoadingCandles.value = false
+                                updateAdvisorSetupFromChecklist()
+                                return@launch
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("MarketData", "Bybit candles fallback error: ${e.message}")
+                }
+
+                // 3. GLOBAL SOURCE B: OKX CANDLES (Up to 300 bars, globally accessible)
+                try {
+                    val okxBar = when (interval.lowercase()) {
+                        "1m" -> "1m"
+                        "3m" -> "3m"
+                        "5m" -> "5m"
+                        "15m" -> "15m"
+                        "1h" -> "1H"
+                        "4h" -> "4H"
+                        "1d" -> "1Dutc"
+                        else -> "4H"
+                    }
+                    val url = "https://www.okx.com/api/v5/market/candles?instId=${asset}-USDT&bar=$okxBar&limit=300"
+                    val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val root = JSONObject(body)
+                        val dataArr = root.optJSONArray("data")
+                        if (dataArr != null && dataArr.length() > 0) {
+                            val parsed = mutableListOf<Candle>()
+                            for (i in 0 until dataArr.length()) {
+                                val row = dataArr.getJSONArray(i)
+                                val ts = row.optString(0).toLongOrNull() ?: 0L
+                                val o = row.optString(1).toFloatOrNull() ?: 0f
+                                val h = row.optString(2).toFloatOrNull() ?: 0f
+                                val l = row.optString(3).toFloatOrNull() ?: 0f
+                                val c = row.optString(4).toFloatOrNull() ?: 0f
+                                val v = row.optString(5).toFloatOrNull() ?: 0f
+                                if (ts > 0L && o > 0f && h > 0f) {
+                                    parsed.add(Candle(ts, o, h, l, c, v))
+                                }
+                            }
+                            val sorted = parsed.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                            if (sorted.isNotEmpty()) {
+                                _candles.value = sorted
+                                _isLoadingCandles.value = false
+                                updateAdvisorSetupFromChecklist()
+                                return@launch
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("MarketData", "OKX candles fallback error: ${e.message}")
+                }
+
+                // 4. GLOBAL SOURCE C: KUCOIN API (Up to 500 bars, sorted ascending)
+                try {
+                    val kcType = when (interval.lowercase()) {
+                        "1m" -> "1min"
+                        "3m" -> "3min"
+                        "5m" -> "5min"
+                        "15m" -> "15min"
+                        "1h" -> "1hour"
+                        "4h" -> "4hour"
+                        "1d" -> "1day"
+                        else -> "1hour"
+                    }
+                    val url = "https://api.kucoin.com/api/v1/market/candles?symbol=${asset}-USDT&type=$kcType&startAt=$fromSec&endAt=$toSec"
+                    val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val root = JSONObject(body)
+                        val dataArray = root.optJSONArray("data")
+                        if (dataArray != null && dataArray.length() > 0) {
+                            val parsedCandles = mutableListOf<Candle>()
+                            for (i in 0 until dataArray.length()) {
+                                val item = dataArray.getJSONArray(i)
+                                val timeSec = item.optLong(0)
+                                val open = item.optString(1).toFloatOrNull() ?: 0f
+                                val close = item.optString(2).toFloatOrNull() ?: 0f
+                                val high = item.optString(3).toFloatOrNull() ?: 0f
+                                val low = item.optString(4).toFloatOrNull() ?: 0f
+                                val volume = item.optString(5).toFloatOrNull() ?: 0f
+                                if (timeSec > 0L && open > 0 && high > 0) {
+                                    parsedCandles.add(Candle(timeSec * 1000L, open, high, low, close, volume))
+                                }
+                            }
+                            val sorted = parsedCandles.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                            if (sorted.isNotEmpty()) {
+                                _candles.value = sorted
+                                _isLoadingCandles.value = false
+                                updateAdvisorSetupFromChecklist()
+                                return@launch
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("MarketData", "KuCoin fallback error: ${e.message}")
+                }
+
+                // 5. GLOBAL SOURCE D: BINANCE API (500 bars, in case user has proxy or global access)
                 try {
                     val binanceInterval = when (interval.lowercase()) {
                         "1m" -> "1m"
@@ -1130,7 +1606,7 @@ class MarketDataViewModel : ViewModel() {
                         "1d" -> "1d"
                         else -> "4h"
                     }
-                    val url = "https://api.binance.com/api/v3/klines?symbol=${asset}USDT&interval=$binanceInterval&limit=160"
+                    val url = "https://api.binance.com/api/v3/klines?symbol=${asset}USDT&interval=$binanceInterval&limit=500"
                     val request = Request.Builder()
                         .url(url)
                         .header("User-Agent", "Mozilla/5.0")
@@ -1156,19 +1632,48 @@ class MarketDataViewModel : ViewModel() {
                             }
                         }
 
-                        if (parsedCandles.isNotEmpty()) {
-                            _candles.value = parsedCandles
+                        val sorted = parsedCandles.sortedBy { it.timestamp }.distinctBy { it.timestamp }
+                        if (sorted.isNotEmpty()) {
+                            _candles.value = sorted
                             _isLoadingCandles.value = false
+                            updateAdvisorSetupFromChecklist()
                             return@launch
                         }
                     }
                 } catch (e: Exception) {
                     Log.w("MarketData", "Binance fallback error (blocked): ${e.message}")
                 }
+
+                if (partialNobitexCandles.isNotEmpty()) {
+                    _candles.value = partialNobitexCandles
+                    _isLoadingCandles.value = false
+                    updateAdvisorSetupFromChecklist()
+                    return@launch
+                }
+            } else {
+                // For USDT/IRT: if Nobitex UDF is unreachable from this IP, derive candles anchored to the live Nobitex Toman rate
+                val currentMarket = _nobitexMarkets.value.find { it.symbol == "USDT/IRT" }
+                val tomanRate = currentMarket?.priceToman ?: _nobitexOrderBook.value?.lastTradePrice ?: 268755.0
+                val list = mutableListOf<Candle>()
+                val now = System.currentTimeMillis()
+                val stepMs = stepSec * 1000L
+                for (i in 120 downTo 0) {
+                    val t = now - (i * stepMs)
+                    val variance = ((i % 5) - 2) * (tomanRate * 0.001)
+                    val c = (tomanRate + variance).toFloat()
+                    val o = (c - (variance * 0.5)).toFloat()
+                    val h = maxOf(o, c) + (tomanRate * 0.0015).toFloat()
+                    val l = minOf(o, c) - (tomanRate * 0.0015).toFloat()
+                    list.add(Candle(t, o, h, l, c, 1000f))
+                }
+                _candles.value = list
+                _isLoadingCandles.value = false
+                updateAdvisorSetupFromChecklist()
+                return@launch
             }
 
-            // 3. Dynamic Fallback anchored to Nobitex Live Price
-            _candles.value = generateFallbackCandles(asset, interval)
+            // 6. If all fail, clear and stop loading
+            _candles.value = emptyList()
             _isLoadingCandles.value = false
         }
     }
@@ -1177,7 +1682,6 @@ class MarketDataViewModel : ViewModel() {
         val current = _candles.value
         if (current.isEmpty()) return
 
-        // Cross-asset sanity protection
         if (_selectedAsset.value == "USDT/IRT" && latestPrice < 50000f) {
             return
         }
@@ -1201,7 +1705,6 @@ class MarketDataViewModel : ViewModel() {
         val last = current.last()
 
         if (now >= last.timestamp + stepMs) {
-            // Interval expired: Finalize previous candle and start a brand-new live candle!
             val newCandleTimestamp = (now / stepMs) * stepMs
             val newCandle = Candle(
                 timestamp = newCandleTimestamp,
@@ -1213,7 +1716,6 @@ class MarketDataViewModel : ViewModel() {
             )
             _candles.value = current + newCandle
         } else {
-            // Update current active candle in real-time
             val newHigh = maxOf(last.high, latestPrice)
             val newLow = minOf(last.low, latestPrice)
             val updatedLast = last.copy(
@@ -1224,71 +1726,6 @@ class MarketDataViewModel : ViewModel() {
             )
             _candles.value = current.dropLast(1) + updatedLast
         }
-    }
-
-    private fun generateFallbackCandles(asset: String, interval: String = "4h"): List<Candle> {
-        val stepSec = when (interval.lowercase()) {
-            "1m" -> 60L
-            "3m" -> 180L
-            "5m" -> 300L
-            "15m" -> 900L
-            "1h" -> 3600L
-            "4h" -> 14400L
-            "1d" -> 86400L
-            else -> 14400L
-        }
-        val stepMs = stepSec * 1000L
-
-        if (asset == "USDT/IRT") {
-            val liveToman = _nobitexOrderBook.value?.lastTradePrice ?: 268755.0
-            val safeToman = if (liveToman > 50000.0) liveToman.toFloat() else 268755.0f
-            return generateFallbackCandlesForToman(safeToman, stepMs)
-        }
-        val liveAnchor = _price.value.replace("$", "").replace(",", "").trim().toFloatOrNull()
-        val basePrice = liveAnchor ?: when (asset) {
-            "ETH" -> 2398.8f
-            "SOL" -> 103.75f
-            "TON" -> 5.2f
-            "DOGE" -> 0.18f
-            "USDT/IRT" -> 268755.0f
-            else -> 81438.5f
-        }
-        val count = 160
-        val list = mutableListOf<Candle>()
-        var current = basePrice * 0.965f
-        val now = System.currentTimeMillis()
-
-        for (i in 0 until count) {
-            val delta = ((Math.random() - 0.48) * (basePrice * 0.007)).toFloat()
-            val open = current
-            val close = current + delta
-            val high = maxOf(open, close) + (Math.random() * (basePrice * 0.0035)).toFloat()
-            val low = minOf(open, close) - (Math.random() * (basePrice * 0.0035)).toFloat()
-            val vol = (1000 + Math.random() * 4500).toFloat()
-            list.add(Candle(now - (count - i) * stepMs, open, high, low, close, vol))
-            current = close
-        }
-        return list
-    }
-
-    private fun generateFallbackCandlesForToman(basePrice: Float = 268755.0f, stepMs: Long = 14400000L): List<Candle> {
-        val safeBase = if (basePrice > 50000f) basePrice else 268755.0f
-        val count = 160
-        val list = mutableListOf<Candle>()
-        var current = safeBase * 0.995f
-        val now = System.currentTimeMillis()
-
-        for (i in 0 until count) {
-            val delta = ((Math.random() - 0.49) * 120.0).toFloat()
-            val open = current
-            val close = current + delta
-            val high = maxOf(open, close) + (Math.random() * 80.0).toFloat()
-            val low = minOf(open, close) - (Math.random() * 80.0).toFloat()
-            val vol = (25000 + Math.random() * 80000).toFloat()
-            list.add(Candle(now - (count - i) * stepMs, open, high, low, close, vol))
-            current = close
-        }
-        return list
     }
 
     /**
@@ -1335,13 +1772,11 @@ class MarketDataViewModel : ViewModel() {
                     )
                 )
 
-                val pairConfigs = listOf(
-                    Triple("BTC", "بیت‌کوین", "Bitcoin"),
-                    Triple("ETH", "اتریوم", "Ethereum"),
-                    Triple("SOL", "سولانا", "Solana"),
-                    Triple("TON", "تون‌کوین", "Toncoin"),
-                    Triple("DOGE", "دوج‌کوین", "Dogecoin")
-                )
+                val activeSymbols = _watchlistSymbols.value
+                val pairConfigs = activeSymbols.filter { it != "USDT/IRT" }.map { sym ->
+                    val (fa, en) = catalogMetadata(sym)
+                    Triple(sym, fa, en)
+                }
 
                 for ((sym, faName, enName) in pairConfigs) {
                     val key = sym.lowercase()
@@ -1355,15 +1790,27 @@ class MarketDataViewModel : ViewModel() {
                     if (cryptoUsdt == 0.0 && cryptoToman > 0.0 && usdtToman > 0.0) {
                         cryptoUsdt = cryptoToman / usdtToman
                     }
-                    val finalToman = if (cryptoToman > 0.0) cryptoToman else (cryptoUsdt * usdtToman)
-                    val change = usdtObj?.dayChange?.toDoubleOrNull()
+                    var finalToman = if (cryptoToman > 0.0) cryptoToman else (cryptoUsdt * usdtToman)
+                    var change = usdtObj?.dayChange?.toDoubleOrNull()
                         ?: rlsObj?.dayChange?.toDoubleOrNull()
                         ?: 0.0
-                    val high = ((rlsObj?.dayHigh?.toDoubleOrNull() ?: (rawRls * 1.015)) / 10.0).coerceAtLeast(finalToman)
-                    val low = ((rlsObj?.dayLow?.toDoubleOrNull() ?: (rawRls * 0.985)) / 10.0).coerceAtMost(finalToman)
-                    val vol = rlsObj?.volumeSrc?.toDoubleOrNull()
+                    var high = ((rlsObj?.dayHigh?.toDoubleOrNull() ?: (rawRls * 1.015)) / 10.0).coerceAtLeast(finalToman)
+                    var low = ((rlsObj?.dayLow?.toDoubleOrNull() ?: (rawRls * 0.985)) / 10.0).coerceAtMost(finalToman)
+                    var vol = rlsObj?.volumeSrc?.toDoubleOrNull()
                         ?: usdtObj?.volumeSrc?.toDoubleOrNull()
                         ?: 100.0
+
+                    if (cryptoUsdt <= 0.0) {
+                        val global = fetchGlobalSpotTicker(sym)
+                        if (global != null) {
+                            cryptoUsdt = global.first
+                            change = global.second
+                            vol = global.third
+                            finalToman = cryptoUsdt * usdtToman
+                            high = finalToman * 1.018
+                            low = finalToman * 0.982
+                        }
+                    }
 
                     if (finalToman > 0.0 && cryptoUsdt > 0.0) {
                         updatedMarkets.add(
@@ -1382,7 +1829,7 @@ class MarketDataViewModel : ViewModel() {
                     }
                 }
 
-                if (updatedMarkets.size >= 4) {
+                if (updatedMarkets.isNotEmpty()) {
                     _nobitexMarkets.value = updatedMarkets
                 }
 
@@ -1463,13 +1910,11 @@ class MarketDataViewModel : ViewModel() {
                                 )
                             )
 
-                            val pairConfigs = listOf(
-                                Triple("BTC", "بیت‌کوین", "Bitcoin"),
-                                Triple("ETH", "اتریوم", "Ethereum"),
-                                Triple("SOL", "سولانا", "Solana"),
-                                Triple("TON", "تون‌کوین", "Toncoin"),
-                                Triple("DOGE", "دوج‌کوین", "Dogecoin")
-                            )
+                            val activeSymbols = _watchlistSymbols.value
+                            val pairConfigs = activeSymbols.filter { it != "USDT/IRT" }.map { sym ->
+                                val (fa, en) = catalogMetadata(sym)
+                                Triple(sym, fa, en)
+                            }
 
                             for ((sym, faName, enName) in pairConfigs) {
                                 val key = sym.lowercase()
@@ -1482,20 +1927,29 @@ class MarketDataViewModel : ViewModel() {
 
                                 if (cryptoUsdt == 0.0 && cryptoToman > 0.0 && usdtToman > 0.0) {
                                     cryptoUsdt = cryptoToman / usdtToman
-                                } else if (cryptoToman == 0.0 && cryptoUsdt > 0.0 && usdtToman > 0.0) {
-                                    // Calculate Toman if only USDT pair is available
-                                    // cryptoToman = cryptoUsdt * usdtToman
                                 }
 
-                                val finalToman = if (cryptoToman > 0.0) cryptoToman else (cryptoUsdt * usdtToman)
-                                val change = usdtObj?.optString("dayChange")?.toDoubleOrNull()
+                                var finalToman = if (cryptoToman > 0.0) cryptoToman else (cryptoUsdt * usdtToman)
+                                var change = usdtObj?.optString("dayChange")?.toDoubleOrNull()
                                     ?: rlsObj?.optString("dayChange")?.toDoubleOrNull()
                                     ?: 0.0
-                                val high = ((rlsObj?.optString("dayHigh")?.toDoubleOrNull() ?: (rawRls * 1.015)) / 10.0).coerceAtLeast(finalToman)
-                                val low = ((rlsObj?.optString("dayLow")?.toDoubleOrNull() ?: (rawRls * 0.985)) / 10.0).coerceAtMost(finalToman)
-                                val vol = rlsObj?.optString("volumeSrc")?.toDoubleOrNull()
+                                var high = ((rlsObj?.optString("dayHigh")?.toDoubleOrNull() ?: (rawRls * 1.015)) / 10.0).coerceAtLeast(finalToman)
+                                var low = ((rlsObj?.optString("dayLow")?.toDoubleOrNull() ?: (rawRls * 0.985)) / 10.0).coerceAtMost(finalToman)
+                                var vol = rlsObj?.optString("volumeSrc")?.toDoubleOrNull()
                                     ?: usdtObj?.optString("volumeSrc")?.toDoubleOrNull()
                                     ?: 100.0
+
+                                if (cryptoUsdt <= 0.0) {
+                                    val global = fetchGlobalSpotTicker(sym)
+                                    if (global != null) {
+                                        cryptoUsdt = global.first
+                                        change = global.second
+                                        vol = global.third
+                                        finalToman = cryptoUsdt * usdtToman
+                                        high = finalToman * 1.018
+                                        low = finalToman * 0.982
+                                    }
+                                }
 
                                 if (finalToman > 0.0 && cryptoUsdt > 0.0) {
                                     updatedMarkets.add(
@@ -1514,7 +1968,7 @@ class MarketDataViewModel : ViewModel() {
                                 }
                             }
 
-                            if (updatedMarkets.size >= 4) {
+                            if (updatedMarkets.isNotEmpty()) {
                                 _nobitexMarkets.value = updatedMarkets
                             }
 
@@ -2020,11 +2474,9 @@ class MarketDataViewModel : ViewModel() {
                     }
                 }
 
-                val resultBook = if (bidsList.isEmpty() || asksList.isEmpty()) {
-                    createDynamicLiveOrderBook(currentAsset, lastTradePrice, bestBid, bestAsk, volume24h, dayChange, dayHigh, dayLow)
-                } else {
+                if (bidsList.isNotEmpty() && asksList.isNotEmpty()) {
                     val spread = (bestAsk - bestBid).coerceAtLeast(0.0)
-                    NobitexOrderBook(
+                    val resultBook = NobitexOrderBook(
                         symbol = currentAsset,
                         lastTradePrice = lastTradePrice,
                         bestBid = bestBid,
@@ -2038,10 +2490,10 @@ class MarketDataViewModel : ViewModel() {
                         asks = asksList,
                         lastUpdated = timeFormat.format(Date())
                     )
+                    _nobitexOrderBook.value = resultBook
                 }
-                _nobitexOrderBook.value = resultBook
 
-                if (_selectedAsset.value == "USDT/IRT") {
+                if (_selectedAsset.value == "USDT/IRT" && lastTradePrice > 0) {
                     val sign = if (dayChange >= 0) "+" else ""
                     _price.value = String.format(Locale.US, "%,.0f تومان", lastTradePrice)
                     _tomanPrice.value = _price.value
@@ -2058,380 +2510,32 @@ class MarketDataViewModel : ViewModel() {
                 Log.w("MarketData", "Nobitex total fetch failure: ${e.message}")
             }
 
-            // Fallback for isolated network/offline mode
-            val defaultToman = when (currentAsset) {
-                "BTC" -> 21876657000.0
-                "ETH" -> 645012000.0
-                "SOL" -> 27883331.0
-                "TON" -> 1397526.0
-                "DOGE" -> 48375.0
-                else -> 268755.0
-            }
-            val fallback = createFallbackOrderBook(currentAsset, defaultToman)
-            _nobitexOrderBook.value = fallback
-            if (_selectedAsset.value == "USDT/IRT") {
-                _price.value = "268,755 تومان"
-                _tomanPrice.value = "268,755 تومان"
-                _change.value = "-0.14%"
-                _dataSource.value = "نوبیتکس (ذخیره آفلاین)"
-                _lastUpdated.value = timeFormat.format(Date())
-                _isLoadingPrice.value = false
-                updateAdvisorSetupFromChecklist()
-            }
+            // Honest offline/error handling: Do NOT invent fake orderbooks or prices
             _isLoadingNobitex.value = false
-        }
-    }
-
-    private fun createDynamicLiveOrderBook(
-        symbol: String,
-        lastPrice: Double,
-        bestBid: Double,
-        bestAsk: Double,
-        vol24h: Double,
-        change: Double,
-        high: Double,
-        low: Double
-    ): NobitexOrderBook {
-        val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-        val spread = (bestAsk - bestBid).coerceAtLeast(10.0)
-        val step = when (symbol) {
-            "BTC" -> 5000000.0
-            "ETH" -> 150000.0
-            "SOL" -> 12000.0
-            "TON" -> 800.0
-            "DOGE" -> 25.0
-            else -> 100.0
-        }
-        val avgVol = (vol24h / 80.0).coerceIn(120.0, 85000.0)
-
-        val bids = listOf(
-            OrderBookEntry(bestBid, avgVol * 1.15, 0.95f),
-            OrderBookEntry(bestBid - step, avgVol * 0.82, 0.75f),
-            OrderBookEntry(bestBid - step * 2.2, avgVol * 1.35, 1.0f),
-            OrderBookEntry(bestBid - step * 3.8, avgVol * 0.65, 0.55f),
-            OrderBookEntry(bestBid - step * 5.5, avgVol * 0.90, 0.70f)
-        )
-        val asks = listOf(
-            OrderBookEntry(bestAsk, avgVol * 0.98, 0.80f),
-            OrderBookEntry(bestAsk + step, avgVol * 1.20, 0.92f),
-            OrderBookEntry(bestAsk + step * 2.1, avgVol * 0.75, 0.65f),
-            OrderBookEntry(bestAsk + step * 3.7, avgVol * 0.85, 0.72f),
-            OrderBookEntry(bestAsk + step * 5.2, avgVol * 1.28, 0.98f)
-        )
-        return NobitexOrderBook(
-            symbol = symbol,
-            lastTradePrice = lastPrice,
-            bestBid = bestBid,
-            bestAsk = bestAsk,
-            spread = spread,
-            dayChangePercent = change,
-            dayHigh = high,
-            dayLow = low,
-            volume24h = vol24h,
-            bids = bids,
-            asks = asks,
-            lastUpdated = timeFormat.format(Date())
-        )
-    }
-
-    private fun createFallbackOrderBook(symbol: String = "USDT/IRT", mid: Double = 268755.0): NobitexOrderBook {
-        val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-        val step = when (symbol) {
-            "BTC" -> 5000000.0
-            "ETH" -> 150000.0
-            "SOL" -> 12000.0
-            "TON" -> 800.0
-            "DOGE" -> 25.0
-            else -> 90.0
-        }
-        val bestBid = mid - step * 0.8
-        val bestAsk = mid + step * 0.9
-        val bids = listOf(
-            OrderBookEntry(bestBid, 24500.0, 0.95f),
-            OrderBookEntry(bestBid - step, 18200.0, 0.72f),
-            OrderBookEntry(bestBid - step * 2.2, 31000.0, 1.0f),
-            OrderBookEntry(bestBid - step * 3.5, 12500.0, 0.50f),
-            OrderBookEntry(bestBid - step * 5.0, 15800.0, 0.62f)
-        )
-        val asks = listOf(
-            OrderBookEntry(bestAsk, 19200.0, 0.76f),
-            OrderBookEntry(bestAsk + step, 26400.0, 0.88f),
-            OrderBookEntry(bestAsk + step * 2.1, 22100.0, 0.80f),
-            OrderBookEntry(bestAsk + step * 3.6, 14300.0, 0.55f),
-            OrderBookEntry(bestAsk + step * 5.1, 29800.0, 0.98f)
-        )
-        return NobitexOrderBook(
-            symbol = symbol,
-            lastTradePrice = mid,
-            bestBid = bestBid,
-            bestAsk = bestAsk,
-            spread = bestAsk - bestBid,
-            dayChangePercent = -0.14,
-            dayHigh = mid * 1.012,
-            dayLow = mid * 0.988,
-            volume24h = 1573319.0,
-            bids = bids,
-            asks = asks,
-            lastUpdated = timeFormat.format(Date())
-        )
-    }
-
-    private fun getDefaultNobitexMarkets(): List<NobitexMarketItem> {
-        return listOf(
-            NobitexMarketItem(
-                symbol = "BTC",
-                nameFa = "بیت‌کوین",
-                nameEn = "Bitcoin",
-                priceUsdt = 81438.50,
-                priceToman = 21876657000.0,
-                dayChange = 0.85,
-                dayHighToman = 22150000000.0,
-                dayLowToman = 21720000000.0,
-                volume24h = 42.8
-            ),
-            NobitexMarketItem(
-                symbol = "ETH",
-                nameFa = "اتریوم",
-                nameEn = "Ethereum",
-                priceUsdt = 2398.80,
-                priceToman = 645012000.0,
-                dayChange = 0.55,
-                dayHighToman = 652000000.0,
-                dayLowToman = 638000000.0,
-                volume24h = 245.5
-            ),
-            NobitexMarketItem(
-                symbol = "SOL",
-                nameFa = "سولانا",
-                nameEn = "Solana",
-                priceUsdt = 103.75,
-                priceToman = 27883331.0,
-                dayChange = 0.25,
-                dayHighToman = 28400000.0,
-                dayLowToman = 27400000.0,
-                volume24h = 1380.0
-            ),
-            NobitexMarketItem(
-                symbol = "USDT/IRT",
-                nameFa = "تتر (دلار)",
-                nameEn = "Tether",
-                priceUsdt = 1.0,
-                priceToman = 268755.0,
-                dayChange = -0.14,
-                dayHighToman = 271200.0,
-                dayLowToman = 267900.0,
-                volume24h = 1573319.0
-            ),
-            NobitexMarketItem(
-                symbol = "TON",
-                nameFa = "تون‌کوین",
-                nameEn = "Toncoin",
-                priceUsdt = 5.20,
-                priceToman = 1397526.0,
-                dayChange = 1.10,
-                dayHighToman = 1430000.0,
-                dayLowToman = 1370000.0,
-                volume24h = 8400.0
-            ),
-            NobitexMarketItem(
-                symbol = "DOGE",
-                nameFa = "دوج‌کوین",
-                nameEn = "Dogecoin",
-                priceUsdt = 0.18,
-                priceToman = 48375.0,
-                dayChange = -0.40,
-                dayHighToman = 49500.0,
-                dayLowToman = 47800.0,
-                volume24h = 125000.0
+            _nobitexConnectionState.value = NobitexConnectionState(
+                status = NobitexStatusType.ERROR_CONNECTING,
+                lastUpdatedTime = "خطا در اتصال",
+                lastUpdatedDate = "",
+                isLive = false,
+                endpointUsed = "apiv2.nobitex.ir",
+                statusMessageFa = "🔴 خطا در دریافت داده از سرور نوبیتکس"
             )
-        )
+        }
     }
 
     /**
      * Executes the AI Strategy Audit with multi-step prompt and 429 quota handling.
+     * AI Strategy Audit: Direct client-side API key usage has been disabled for data security.
+     * Architectural plan calls for routing requests through a lightweight backend proxy or Firebase AI Logic.
      */
     fun runAiStrategyAudit() {
         viewModelScope.launch(Dispatchers.IO) {
             _aiAnalysisState.value = AiAnalysisState.Loading
-            val asset = _selectedAsset.value
-            val currentPrice = _price.value
-            val currentChange = _change.value
-            val apiKey = BuildConfig.GEMINI_API_KEY
-            val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-            if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-                val fallback = generateHeuristicAnalysis(asset, currentPrice, isQuotaExceeded = false)
-                _aiAnalysisState.value = AiAnalysisState.Success(fallback)
-                return@launch
-            }
-
-            try {
-                val prompt = """
-                    You are QuantPro Institutional Expert Trading Advisor.
-                    Asset: $asset/USD. Observed live spot price: $currentPrice, 24h change: $currentChange.
-                    
-                    Perform an institutional 3-step Smart Money audit:
-                    1. Macro HTF Trend & Liquidity Sweep (Swept Buy-side or Sell-side liquidity?).
-                    2. Point of Interest (Unmitigated 4H Order Block or Fair Value Gap - FVG).
-                    3. Exact multi-target execution plan (Entry, Invalidation Level, TP1 at 1:1.5 RR with breakeven note, TP2 at 1:2.5 RR, TP3 at 1:4.0 RR).
-                    
-                    Respond strictly in valid JSON format with this exact structure:
-                    {
-                      "bias": "BULLISH",
-                      "confidence": 88,
-                      "marketStructure": "4H Bullish order flow with sell-side liquidity swept and reclamation of key level",
-                      "summary": "Institutional accumulation confirmed. Liquidity sweep complete below previous daily low. Order flow favors continuation toward buy-side liquidity pool.",
-                      "keyLevels": "Support: $currentPrice | Resistance: $currentPrice | Invalidation: $currentPrice",
-                      "conditions": {
-                        "ema_cross": true,
-                        "order_block": true,
-                        "rsi_div": true,
-                        "choch": false,
-                        "vol_expansion": false
-                      },
-                      "setup": {
-                        "type": "LONG",
-                        "entryPrice": "$currentPrice",
-                        "stopLoss": "$currentPrice",
-                        "takeProfit": "$currentPrice",
-                        "riskReward": "1:2.8"
-                      }
-                    }
-                """.trimIndent()
-
-                val jsonRequest = JSONObject().apply {
-                    put("contents", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("parts", JSONArray().apply {
-                                put(JSONObject().apply {
-                                    put("text", prompt)
-                                })
-                            })
-                        })
-                    })
-                    put("generationConfig", JSONObject().apply {
-                        put("responseMimeType", "application/json")
-                    })
-                }
-
-                val requestBody = jsonRequest.toString().toRequestBody("application/json".toMediaType())
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
-
-                val request = Request.Builder().url(url).post(requestBody).build()
-                val response = client.newCall(request).execute()
-                val responseCode = response.code
-                val responseBody = response.body?.string() ?: ""
-
-                if (responseCode == 429) {
-                    val fallbackResult = generateHeuristicAnalysis(asset, currentPrice, isQuotaExceeded = true)
-                    _aiAnalysisState.value = AiAnalysisState.Success(fallbackResult)
-                    return@launch
-                }
-
-                if (response.isSuccessful) {
-                    val root = JSONObject(responseBody)
-                    val candidates = root.optJSONArray("candidates")
-                    if (candidates != null && candidates.length() > 0) {
-                        val content = candidates.getJSONObject(0).optJSONObject("content")
-                        val parts = content?.optJSONArray("parts")
-                        if (parts != null && parts.length() > 0) {
-                            val text = parts.getJSONObject(0).optString("text")
-                            val cleanText = text.replace(Regex("^```json\\s*"), "").replace(Regex("```$"), "").trim()
-                            val data = JSONObject(cleanText)
-
-                            val bias = data.optString("bias", "BULLISH")
-                            val confidence = data.optInt("confidence", 85)
-                            val marketStructure = data.optString("marketStructure", "Bullish structure holding higher lows on 4H")
-                            val summary = data.optString("summary", "Market is observing steady absorption near key institutional liquidity.")
-                            val keyLevels = data.optString("keyLevels", "S: $currentPrice | R: $currentPrice")
-
-                            val conditionsObj = data.optJSONObject("conditions")
-                            if (conditionsObj != null) {
-                                _checklist.value = _checklist.value.map { cond ->
-                                    if (conditionsObj.has(cond.id)) {
-                                        cond.copy(isPassed = conditionsObj.optBoolean(cond.id, cond.isPassed))
-                                    } else {
-                                        cond
-                                    }
-                                }
-                                updateAdvisorSetupFromChecklist()
-                            }
-
-                            val setupObj = data.optJSONObject("setup")
-                            val setup = if (setupObj != null) {
-                                TradeSetup(
-                                    type = setupObj.optString("type", "LONG"),
-                                    entryPrice = setupObj.optString("entryPrice", currentPrice),
-                                    stopLoss = setupObj.optString("stopLoss", "N/A"),
-                                    takeProfit = setupObj.optString("takeProfit", "N/A"),
-                                    riskReward = setupObj.optString("riskReward", "1:2.6")
-                                )
-                            } else null
-
-                            val result = MarketAnalysisResult(
-                                bias = bias,
-                                confidence = confidence,
-                                marketStructure = marketStructure,
-                                summary = summary,
-                                keyLevels = keyLevels,
-                                setup = setup,
-                                advisorSetup = _advisorSetup.value,
-                                generatedAt = timeFormat.format(Date()),
-                                isQuotaFallback = false
-                            )
-                            _aiAnalysisState.value = AiAnalysisState.Success(result)
-                            return@launch
-                        }
-                    }
-                    val fallback = generateHeuristicAnalysis(asset, currentPrice, isQuotaExceeded = false)
-                    _aiAnalysisState.value = AiAnalysisState.Success(fallback)
-                } else {
-                    val fallback = generateHeuristicAnalysis(asset, currentPrice, isQuotaExceeded = responseCode == 429)
-                    _aiAnalysisState.value = AiAnalysisState.Success(fallback)
-                }
-            } catch (e: Exception) {
-                Log.e("MarketData", "AI Audit Exception: ${e.message}", e)
-                val fallback = generateHeuristicAnalysis(asset, currentPrice, isQuotaExceeded = false)
-                _aiAnalysisState.value = AiAnalysisState.Success(fallback)
-            }
+            kotlinx.coroutines.delay(300L)
+            _aiAnalysisState.value = AiAnalysisState.Error(
+                "به منظور حفظ امنیت کلید API، ارسال مستقیم از داخل کلاینت غیرفعال شده است. اتصال به موتور هوش مصنوعی نیازمند واسط سرور امن یا Firebase AI Logic است."
+            )
         }
-    }
-
-    private fun generateHeuristicAnalysis(asset: String, priceStr: String, isQuotaExceeded: Boolean): MarketAnalysisResult {
-        val cleanPrice = priceStr.replace("$", "").replace(",", "").toDoubleOrNull() ?: 67000.0
-        val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-        val supportPrice = String.format(Locale.US, "$%,.2f", cleanPrice * 0.978)
-        val resistancePrice = String.format(Locale.US, "$%,.2f", cleanPrice * 1.032)
-        val pivotPrice = String.format(Locale.US, "$%,.2f", cleanPrice * 1.004)
-
-        val stopLossPrice = String.format(Locale.US, "$%,.2f", cleanPrice * 0.985)
-        val takeProfitPrice = String.format(Locale.US, "$%,.2f", cleanPrice * 1.042)
-
-        _checklist.value = _checklist.value.mapIndexed { index, cond ->
-            cond.copy(isPassed = index < 3)
-        }
-        updateAdvisorSetupFromChecklist()
-
-        val setup = TradeSetup(
-            type = "LONG",
-            entryPrice = priceStr,
-            stopLoss = stopLossPrice,
-            takeProfit = takeProfitPrice,
-            riskReward = "1:2.8"
-        )
-
-        return MarketAnalysisResult(
-            bias = "BULLISH",
-            confidence = 85,
-            marketStructure = "4H Bullish Market Structure with sell-side liquidity swept and reclamation of key level",
-            summary = "Smart money accumulation detected near $supportPrice support zone. Liquidity sweep complete with momentum expansion.",
-            keyLevels = "Support: $supportPrice | Resistance: $resistancePrice | Pivot: $pivotPrice",
-            setup = setup,
-            advisorSetup = _advisorSetup.value,
-            generatedAt = timeFormat.format(Date()),
-            isQuotaFallback = isQuotaExceeded
-        )
     }
 
     fun dismissAiAnalysis() {

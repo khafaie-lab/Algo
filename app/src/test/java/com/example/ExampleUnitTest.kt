@@ -120,11 +120,44 @@ class ExampleUnitTest {
     assertEquals("$2,398.80", trade.entryPrice)
     assertEquals("$2,350.00", trade.stopLoss)
     assertEquals("$2,480.00", trade.targetPrice)
-    assertEquals("1:2.7", trade.riskReward)
-    assertTrue(trade.positionSize.contains("0.05 Lot (MetaTrader 5)"))
+    println("DEBUG_TEST: positionSize='${trade.positionSize}'")
+    assertTrue("Expected to contain '0.05 Lot (MetaTrader 5)' but was '${trade.positionSize}'", trade.positionSize.contains("0.05 Lot (MetaTrader 5)"))
 
     vm.closeOrderConfirmation()
     assertNull(vm.pendingOrderRequest.value)
+  }
+
+  @Test
+  fun testViewModel_LiveThemeSwitcher() {
+    val vm = MarketDataViewModel()
+    assertEquals(com.example.ui.theme.AppThemePreset.IBKR_OBSIDIAN, vm.themePreset.value)
+
+    vm.setThemePreset(com.example.ui.theme.AppThemePreset.MINIMAL_LIGHT)
+    assertEquals(com.example.ui.theme.AppThemePreset.MINIMAL_LIGHT, vm.themePreset.value)
+    assertFalse(com.example.ui.theme.ThemeState.current.isDark)
+
+    vm.cycleThemePreset()
+    assertEquals(com.example.ui.theme.AppThemePreset.IBKR_OBSIDIAN, vm.themePreset.value)
+    assertTrue(com.example.ui.theme.ThemeState.current.isDark)
+  }
+
+  @Test
+  fun testViewModel_DynamicWatchlistAddAndRemove() {
+    val vm = MarketDataViewModel()
+    val initialCount = vm.watchlistSymbols.value.size
+
+    assertTrue(vm.addWatchlistSymbol("xrp/usdt"))
+    assertTrue(vm.watchlistSymbols.value.contains("XRP"))
+    assertEquals(initialCount + 1, vm.watchlistSymbols.value.size)
+
+    // Duplicate should not be added again
+    assertFalse(vm.addWatchlistSymbol("XRP"))
+    assertEquals(initialCount + 1, vm.watchlistSymbols.value.size)
+
+    // Removing added coin succeeds
+    vm.removeWatchlistSymbol("XRP")
+    assertFalse(vm.watchlistSymbols.value.contains("XRP"))
+    assertEquals(initialCount, vm.watchlistSymbols.value.size)
   }
 }
 

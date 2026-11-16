@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0A0D14;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        .tradingview-widget-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        #tv_chart_container {
+            width: 100%;
+            height: 100%;
+        }
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #0A0D14;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #8B95A5;
+            font-size: 11px;
+            z-index: 10;
+            font-family: monospace;
+            gap: 10px;
+        }
+        .spinner {
+            width: 26px;
+            height: 26px;
+            border: 2.5px solid #232A36;
+            border-top-color: #2B7FFF;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <span id="load-msg">CONNECTING TO TRADINGVIEW (BINANCE)...</span>
+    </div>
+    <div class="tradingview-widget-container">
+        <div id="tv_chart_container"></div>
+    </div>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+        let currentWidget = null;
+        let lastSymbol = "BINANCE:BTCUSDT";
+        let lastInterval = "60";
+
+        function mapTimeframe(tf) {
+            if (!tf) return "60";
+            const s = tf.toLowerCase().trim();
+            if (s === "1m") return "1";
+            if (s === "3m") return "3";
+            if (s === "5m") return "5";
+            if (s === "15m") return "15";
+            if (s === "30m") return "30";
+            if (s === "1h") return "60";
+            if (s === "2h") return "120";
+            if (s === "4h") return "240";
+            if (s === "1d" || s === "d") return "D";
+            if (s === "1w" || s === "w") return "W";
+            return "60";
+        }
+
+        function formatBinanceSymbol(sym) {
+            if (!sym) return "BINANCE:BTCUSDT";
+            let clean = sym.replace("/", "").replace("IRT", "").replace("-", "").toUpperCase().trim();
+            if (clean === "USDT" || clean.length === 0) return "BINANCE:BTCUSDT";
+            if (!clean.endsWith("USDT")) clean += "USDT";
+            return "BINANCE:" + clean;
+        }
+
+        function loadTradingViewChart(symbolName, timeframe) {
+            const sym = formatBinanceSymbol(symbolName);
+            const interval = mapTimeframe(timeframe);
+            lastSymbol = sym;
+            lastInterval = interval;
+
+            const loader = document.getElementById('loading-overlay');
+            const loadMsg = document.getElementById('load-msg');
+            if (loader) {
+                if (loadMsg) loadMsg.textContent = 'LOADING ' + sym + ' (' + interval + ')...';
+                loader.style.display = 'flex';
+            }
+
+            try {
+                if (typeof TradingView !== 'undefined') {
+                    document.getElementById('tv_chart_container').innerHTML = '';
+                    currentWidget = new TradingView.widget({
+                        "autosize": true,
+                        "symbol": sym,
+                        "interval": interval,
+                        "timezone": "Asia/Tehran",
+                        "theme": "dark",
+                        "style": "1",
+                        "locale": "en",
+                        "toolbar_bg": "#0A0D14",
+                        "enable_publishing": false,
+                        "hide_top_toolbar": false,
+                        "hide_legend": false,
+                        "save_image": false,
+                        "container_id": "tv_chart_container",
+                        "onChartReady": function() {
+                            if (loader) loader.style.display = 'none';
+                        }
+                    });
+                    setTimeout(function() {
+                        if (loader) loader.style.display = 'none';
+                    }, 2200);
+                } else {
+                    const encodedSym = encodeURIComponent(sym);
+                    const iframeUrl = "https://s.tradingview.com/widgetembed/?symbol=" + encodedSym +
+                        "&interval=" + interval +
+                        "&theme=dark&style=1&timezone=Asia%2FTehran&locale=en";
+                    document.getElementById('tv_chart_container').innerHTML =
+                        '<iframe src="' + iframeUrl + '" style="width:100%;height:100%;border:none;" allowtransparency="true" scrolling="no"></iframe>';
+                    setTimeout(function() {
+                        if (loader) loader.style.display = 'none';
+                    }, 1200);
+                }
+            } catch (e) {
+                console.error("Failed to init TradingView widget:", e);
+                if (loader) loader.style.display = 'none';
+            }
+        }
+
+        window.loadTradingViewChart = loadTradingViewChart;
+
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                loadTradingViewChart(lastSymbol, lastInterval);
+            }, 200);
+        });
+    </script>
+</body>
+</html>

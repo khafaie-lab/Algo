@@ -28,8 +28,8 @@ class NobitexRepository {
         .build()
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(3, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val original = chain.request()
             val request = original.newBuilder()
